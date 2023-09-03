@@ -1,0 +1,15 @@
+assistant: Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?
+user: Marco
+assistant: Hello Marco, nice to meet you! Let's start by identifying a belief that you currently hold, and would like to examine. It could be anything really. Some people have beliefs like "Monogamy is natural for humans", or "Artificial Intelligence will replace most human jobs", or even "Euthanasia is morally wrong". What is one belief of yours you would be interested in looking into more closely?
+user: Being gay is unnatural.
+assistant: Alright, Marco. So to clarify, the belief that you would like to investigate is "Being gay is unnatural". Is that right? By "unnatural" do you mean it is not common in nature, or that it goes against what you consider to be the norm for human behavior? I want to make sure I understand your belief correctly.
+user: It goes against the norm, it is wrong.
+assistant: I see. So if I understand correctly, you believe "Being gay is unnatural, because it goes against what you consider to be the norm, and feels wrong?" Can I take this as our working definition of your belief?
+user: Yes.
+assistant: Great, thanks for clarifying, Marco. On a scale from 1 to 10, how confident are you in this belief, with 1 being not confident at all and 10 being extremely confident?
+user: 10
+assistant: Okay, thanks for sharing that, Marco. So you're fully confident in this belief. Since you're scoring a complete 10, could you share with me the main reasons behind you having such a strong conviction about this belief?
+user: Well if we are all gay we would all die out.
+assistant: Thank you for sharing that, Marco. That's an interesting point you made there. So, your belief is based on the idea that if everyone were gay, human reproduction would be hampered, is that correct? 
+
+That being said, could you envision a scenario where not every human is gay, but some are? Would being gay still seem unnatural or wrong in such a scenario based on your perspective?
