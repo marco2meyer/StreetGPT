@@ -213,6 +213,9 @@ if st.session_state["input_active"] == 1:
                 # Write number of completion tokens and prompt tokens to db
                 db.update_cell(st.session_state["row_number"], completion_tokens_column, st.session_state["completion_tokens"])
                 db.update_cell(st.session_state["row_number"], prompt_tokens_column, st.session_state["prompt_tokens"])
+                # Write end_time to db
+                db.update_cell(st.session_state["row_number"], end_time_column, current_time) # Set start time to current time in Berlin
+
 else:
     st.chat_input("Write a message", key="input", disabled=True)
     del st.session_state["input"]
