@@ -65,7 +65,7 @@ if "openai_model" not in st.session_state:
     url_params = st.experimental_get_query_params()
     st.session_state["credence"] = int(url_params.get('credence', [0])[0])
     st.session_state["claim"] = url_params.get('claim', [0])[0]
-    st.session_state["password"] = url_params.get('password', [0])[0]
+    st.session_state["password"] = url_params.get('password', ["na"])[0]
     st.session_state["id"] = url_params.get('id', [0])[0]
 
     
@@ -149,7 +149,6 @@ opening_message = "Hi, my name is Diotima. I am a street epistemologist that can
 # If the password is equal to abc, show the certain experience
 if "api_key" not in st.session_state:
     if st.session_state["password"] == st.secrets["PASSWORD"]:
-        print("should this happen?")
         st.session_state["api_key"] = st.secrets["OPENAI_API_KEY"]
     # Else, ask the user to enter their OpenAI api code
     else:
