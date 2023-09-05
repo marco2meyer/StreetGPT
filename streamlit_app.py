@@ -35,7 +35,7 @@ def num_tokens_from_prompt(prompt, encoding_name="cl100k_base") -> int:
 
 url_params = st.experimental_get_query_params()
 st.session_state["password"] = url_params.get('password', ["na"])[0]
-if st.session_state["password"] == st.secrets["PASSWORD"]:
+if st.session_state["password"] in st.secrets["PASSWORD"]:
     st.session_state["password_correct"] = True
 else:
     st.session_state["password_correct"] = False
@@ -130,21 +130,23 @@ else:
                     f"You gently let me see possible contradictions in my beliefs, and help me note beliefs that I am not well justified in holding." 
                     f"Have a conversation with me that helps me examine one of my beliefs."
                     f"1. Ask me my name. Do not continue before I answer."
-                    f"2. Remind me that I have earlier in a survey indicated that I endorse the belief {st.session_state['claim']}. Confirm that I am happy to investigate this belief."
-                    f"Do not proceed before I answer. Help me clarify my belief if necessary, as a street epistemologist would do."
+                    f"2. Remind me that I have earlier in a survey indicated that I endorse the belief {st.session_state['claim']}."
+                    f"Ask me whether I want to restate the belief in my own words, or whether I am happy with the way it is phrased. Do not proceed before I answer."
+                    f"3. Help me clarify my belief by laying out different things it might mean, as a street epistemologist would do."
                     f"Ask me to confirm the clarified belief before we move on." 
-                    f"3. Remind me I indicated earlier in the survey that on a scale from 1-10, my credence in the belief was {st.session_state['credence']}. Confirm that this is still my credence. Don't proceed before I respond." 
-                    f"4. Have a conversation with me that helps me investigate the epistemology of my belief, like street epistemologists do."
+                    f"4. Remind me I indicated earlier in the survey that on a scale from 1-10, my credence in the belief was {st.session_state['credence']}. Confirm that this is still my credence. Don't proceed before I respond." 
+                    f"If my confidence is lower than 10, ask me what prevents me from being fully confident."
+                    f"5. Have a conversation with me that helps me investigate the epistemology of my belief, like street epistemologists do."
                     f"Guide me through questions to consider how my belief might be wrong, or unjustified."
                     f"If my confidence is lower than 10, ask me what prevents me from being fully confident."
                     f"Ask questions about my main reasons for my belief. Help me to gently challenge my beliefs, through questions." 
                     f"Ask questions one by one, and don't proceed to the next question before I have answered the earlier question." 
                     f"Ask plenty of follow-up questions when helpful."
                     f"Make sure to examine all reasons for my belief that I mention."
-                    f"5. Ask me additional reasons for my belief, and also examine those additional reasons."
-                    f"6. Summarize the conversation."
-                    f"7. Ask me how confident I am in my belief after the conversation. Make sure not to judge my response. Don't point out you won't judge it. " 
-                    f"8. Thank me for the conversation, and say goodbye. Literally use the word goodbye."
+                    f"6. Ask me additional reasons for my belief, and also examine those additional reasons."
+                    f"7. Summarize the conversation."
+                    f"8. Ask me how confident I am in my belief after the conversation. Make sure not to judge my response. Don't point out you won't judge it. " 
+                    f"9. Thank me for the conversation, and share with me a random aphanumeric code of length 8 that you generate, which I need to compelte the survey. Then say goodbye. Literally use the word goodbye."
                     f"Don't talk to me about the purpose of the exercise. Do not introduce new facts, and don't be preachy.")
 
 opening_message = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
@@ -214,6 +216,7 @@ if st.session_state["input_active"] == 1:
                 db.update_cell(st.session_state["row_number"], completion_tokens_column, st.session_state["completion_tokens"])
                 db.update_cell(st.session_state["row_number"], prompt_tokens_column, st.session_state["prompt_tokens"])
                 # Write end_time to db
+                current_time = get_current_time_in_berlin()
                 db.update_cell(st.session_state["row_number"], end_time_column, current_time) # Set start time to current time in Berlin
 
 else:
