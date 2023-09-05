@@ -66,6 +66,7 @@ if "openai_model" not in st.session_state:
     st.session_state["credence"] = int(url_params.get('credence', [0])[0])
     st.session_state["claim"] = url_params.get('claim', [0])[0]
     st.session_state["password"] = url_params.get('password', ["na"])[0]
+    print(st.session_state["password"])
     st.session_state["id"] = url_params.get('id', [0])[0]
 
     
