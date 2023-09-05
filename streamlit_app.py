@@ -36,7 +36,6 @@ def num_tokens_from_prompt(prompt, encoding_name="cl100k_base") -> int:
 
 #st.title("Let's talk")
 
-openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # Setup GSheet doc
 scope = ['https://spreadsheets.google.com/feeds',
@@ -52,16 +51,29 @@ db = gc.open_by_key(spreadsheet_id).sheet1
 id_column = 1
 start_time_column = 2
 end_time_column = 3
-name_column = 4
-conversation_column = 5
-completion_tokens_column = 6
-prompt_tokens_column = 7
+claim_column = 4
+credence_column = 5
+name_column = 6
+conversation_column = 7
+completion_tokens_column = 8
+prompt_tokens_column = 9
 
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = "gpt-4"
     
-    # Generate random id and write to db
-    st.session_state["id"] = generate_random_id()
+    #Extract URL params
+    url_params = st.experimental_get_query_params()
+    st.session_state["credence"] = int(url_params.get('credence', [0])[0])
+    st.session_state["claim"] = url_params.get('claim', [0])[0]
+    st.session_state["password"] = url_params.get('password', [0])[0]
+    st.session_state["id"] = url_params.get('id', [0])[0]
+
+    
+    # If no id is passed, generate random id and write to db
+    if st.session_state["id"] == 0:
+        st.session_state["id"] = generate_random_id()
+    
+    # Make a new row in the database for this id
     db.append_row([st.session_state["id"]])
 
     # Determine db row for this conversation
@@ -72,6 +84,10 @@ if "openai_model" not in st.session_state:
     current_time = get_current_time_in_berlin()
     db.update_cell(st.session_state["row_number"], start_time_column, current_time) # Set start time to current time in Berlin
     
+    # Write claim and credence vars to db
+    db.update_cell(st.session_state["row_number"], claim_column, st.session_state["claim"])
+    db.update_cell(st.session_state["row_number"], credence_column, st.session_state["credence"])
+        
     # Initialize variables for completion tokens and prompt tokens
     st.session_state["completion_tokens"] = 0
     st.session_state["prompt_tokens"] = 0
@@ -79,10 +95,7 @@ if "openai_model" not in st.session_state:
     # Set show user text input to True
     st.session_state["input_active"] = 1
     
-    #Extract URL params
-    url_params = st.experimental_get_query_params()
-    st.session_state["credence"] = int(url_params.get('credence', [0])[0])
-    st.session_state["claim"] = url_params.get('claim', [0])[0]
+
 
     
 if st.session_state["claim"] == 0:
@@ -132,67 +145,88 @@ else:
 opening_message = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
 
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-    st.session_state.messages.append({"role": "assistant", "content": opening_message, "avatar": "🧑‍🎤"})
 
-# Show chat messages in streamlit
-for message in st.session_state.messages:
-    with st.chat_message(message["role"], avatar=message["avatar"]):
-       st.markdown(message["content"])
+# If the password is equal to abc, show the certain experience
+if "api_key" not in st.session_state:
+    if st.session_state["password"] == st.secrets["PASSWORD"]:
+        print("should this happen?")
+        st.session_state["api_key"] = st.secrets["OPENAI_API_KEY"]
+    # Else, ask the user to enter their OpenAI api code
+    else:
+        # Create a placeholder for the api input
+        api_code_input = st.empty()
+        # Ask the user to enter the api code
+        api_code = api_code_input.text_input("Enter your OpenAI api code:")
+        # If the user entered something, store it in the session state
+        if api_code:
+            st.session_state["api_key"] = api_code
+            api_code_input.write("")
+ 
+if "api_key" in st.session_state:
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        st.session_state.messages.append({"role": "assistant", "content": opening_message, "avatar": "🧑‍🎤"})
 
-# allow users to send messages and process them 
-if st.session_state["input_active"] == 1:
-    if prompt := st.chat_input("Write a message", key="input"):
-        st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "🧐"})
-        with st.chat_message("user", avatar="🧐"):
-            st.markdown(prompt)
-        
-        # Create promt to OpenAI
-        with st.chat_message("assistant", avatar="🧑‍🎤"):
-            message_placeholder = st.empty()
-            full_response = ""
-            
-            # Create a list to store the complete prompt sent to OpenAI
-            complete_prompt = [{"role": "user", "content": system_message}] + \
-                            [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages]
-            # Estimating tokens for the prompt
-            prompt_tokens = num_tokens_from_prompt(complete_prompt)
-        
-            # Send the prompt to OpenAI, and get a response    
-            for response in openai.ChatCompletion.create(
-                model=st.session_state["openai_model"],
-                messages=complete_prompt,
-                stream=True,
-            ):
-                full_response += response.choices[0].delta.get("content", "")
-                message_placeholder.markdown(full_response + "▌") 
-                # Each response from the stream is one completion token  
-                st.session_state["completion_tokens"] += 1         
-            
-            message_placeholder.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response, "avatar": "🧑‍🎤"})
-            st.session_state["prompt_tokens"] += prompt_tokens
-            
-            # If the chatbot uses the word goodbye, disable the input field.
-            if "goodbye" in full_response.lower():
-                st.session_state["input_active"] = 0
+    # Show chat messages in streamlit
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"], avatar=message["avatar"]):
+            st.markdown(message["content"])
 
+    # allow users to send messages and process them 
+    if st.session_state["input_active"] == 1:
+        print(st.session_state["api_key"])
+        openai.api = st.session_state["api_key"]
+        print(openai.api)
+        if prompt := st.chat_input("Write a message", key="input"):
+            st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "🧐"})
+            with st.chat_message("user", avatar="🧐"):
+                st.markdown(prompt)
             
-            # Write the complete prompt and response to a file
-            if len(st.session_state.messages) > 1:            
-                # Combine all messages so far into an output string
-                output_str = ""
-                for message in complete_prompt[1:]:
-                    output_str += f"{message['role']}: {message['content']}\n"
-                output_str += f"assistant: {full_response}\n"
-                # Write string to db
-                db.update_cell(st.session_state["row_number"], conversation_column, output_str)
-                # Write name of respondent to db
-                db.update_cell(st.session_state["row_number"], name_column, st.session_state.messages[1]["content"])
-                # Write number of completion tokens and prompt tokens to db
-                db.update_cell(st.session_state["row_number"], completion_tokens_column, st.session_state["completion_tokens"])
-                db.update_cell(st.session_state["row_number"], prompt_tokens_column, st.session_state["prompt_tokens"])
-else:
-    st.chat_input("Write a message", key="input", disabled=True)
-    del st.session_state["input"]
+            # Create promt to OpenAI
+            with st.chat_message("assistant", avatar="🧑‍🎤"):
+                message_placeholder = st.empty()
+                full_response = ""
+                
+                # Create a list to store the complete prompt sent to OpenAI
+                complete_prompt = [{"role": "user", "content": system_message}] + \
+                                [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages]
+                # Estimating tokens for the prompt
+                prompt_tokens = num_tokens_from_prompt(complete_prompt)
+            
+                # Send the prompt to OpenAI, and get a response    
+                for response in openai.ChatCompletion.create(
+                    model=st.session_state["openai_model"],
+                    messages=complete_prompt,
+                    stream=True,
+                ):
+                    full_response += response.choices[0].delta.get("content", "")
+                    message_placeholder.markdown(full_response + "▌") 
+                    # Each response from the stream is one completion token  
+                    st.session_state["completion_tokens"] += 1         
+                
+                message_placeholder.markdown(full_response)
+                st.session_state.messages.append({"role": "assistant", "content": full_response, "avatar": "🧑‍🎤"})
+                st.session_state["prompt_tokens"] += prompt_tokens
+                
+                # If the chatbot uses the word goodbye, disable the input field.
+                if "goodbye" in full_response.lower():
+                    st.session_state["input_active"] = 0
+
+                
+                # Write the complete prompt and response to a file
+                if len(st.session_state.messages) > 1:            
+                    # Combine all messages so far into an output string
+                    output_str = ""
+                    for message in complete_prompt[1:]:
+                        output_str += f"{message['role']}: {message['content']}\n"
+                    output_str += f"assistant: {full_response}\n"
+                    # Write string to db
+                    db.update_cell(st.session_state["row_number"], conversation_column, output_str)
+                    # Write name of respondent to db
+                    db.update_cell(st.session_state["row_number"], name_column, st.session_state.messages[1]["content"])
+                    # Write number of completion tokens and prompt tokens to db
+                    db.update_cell(st.session_state["row_number"], completion_tokens_column, st.session_state["completion_tokens"])
+                    db.update_cell(st.session_state["row_number"], prompt_tokens_column, st.session_state["prompt_tokens"])
+    else:
+        st.chat_input("Write a message", key="input", disabled=True)
+        del st.session_state["input"]
