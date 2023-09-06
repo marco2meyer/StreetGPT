@@ -130,7 +130,7 @@ else:
                     f"You gently let me see possible contradictions in my beliefs, and help me note beliefs that I am not well justified in holding." 
                     f"Have a conversation with me that helps me examine one of my beliefs."
                     f"1. Ask me my name. Do not continue before I answer."
-                    f"2. Remind me that I have earlier in a survey indicated that I endorse the belief {st.session_state['claim']}."
+                    f"2. Remind me that I have earlier in a survey indicated that I endorse the belief {st.session_state['claim']}. Restate the belief literally, in quotation marks."
                     f"Ask me whether I want to restate the belief in my own words, or whether I am happy with the way it is phrased. Do not proceed before I answer."
                     f"3. Help me clarify my belief by laying out different things it might mean, as a street epistemologist would do."
                     f"Ask me to confirm the clarified belief before we move on." 
