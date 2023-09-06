@@ -65,6 +65,7 @@ name_column = 6
 conversation_column = 7
 completion_tokens_column = 8
 prompt_tokens_column = 9
+password_column = 10
 
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = "gpt-4"
@@ -215,6 +216,9 @@ if st.session_state["input_active"] == 1:
                 # Write number of completion tokens and prompt tokens to db
                 db.update_cell(st.session_state["row_number"], completion_tokens_column, st.session_state["completion_tokens"])
                 db.update_cell(st.session_state["row_number"], prompt_tokens_column, st.session_state["prompt_tokens"])
+                
+                db.update_cell(st.session_state["row_number"], password_column, st.session_state["password"])
+
                 # Write end_time to db
                 current_time = get_current_time_in_berlin()
                 db.update_cell(st.session_state["row_number"], end_time_column, current_time) # Set start time to current time in Berlin
