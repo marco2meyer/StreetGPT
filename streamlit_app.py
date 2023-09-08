@@ -7,7 +7,25 @@ import random
 import string
 from datetime import datetime
 import pytz
+from tenacity import retry, wait_random_exponential, stop_after_attempt, RetryError
 
+
+
+@st.cache_resource
+def get_db_conn(credentials_path, scope):
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(credentials_path, scope)
+    gc = gspread.authorize(credentials)
+    return gc
+
+@st.cache_resource
+def get_db_sheet(_gc, spreadsheet_id, sheet):
+    return _gc.open_by_key(spreadsheet_id).get_worksheet(sheet)
+
+def write_to_db(db, row_number, column, value):
+    db.update_cell(row_number, column, value)
+   
+def read_from_db(db, row, column):
+    return db.cell(row, column).value
 
 # To generate random IDs
 def generate_random_id(length=10):
@@ -33,13 +51,40 @@ def num_tokens_from_prompt(prompt, encoding_name="cl100k_base") -> int:
     num_tokens = len(encoding.encode(string))
     return num_tokens
 
+# Function to query Open-AI
+@retry(
+    stop=stop_after_attempt(2),
+    wait=wait_random_exponential(min=2, max=5)
+)
+def chat_completion_with_backoff(model, prompt):
+    full_response = ""
+    message_placeholder = st.empty()
+
+    try:
+        for response in openai.ChatCompletion.create(
+                model=model,
+                messages=prompt,
+                stream=True
+        ):
+            full_response += response.choices[0].delta.get("content", "")
+            message_placeholder.markdown(full_response + "▌")
+            # Keep track of completion tokens
+            st.session_state["completion_tokens"] += 1
+
+        return full_response
+    except Exception as e:
+        st.session_state["error_messages"] += str(e) + "\n"
+        raise e
+
+
+### Setup ##
+
 url_params = st.experimental_get_query_params()
 st.session_state["password"] = url_params.get('password', ["na"])[0]
 if st.session_state["password"] in st.secrets["PASSWORD"]:
     st.session_state["password_correct"] = True
 else:
     st.session_state["password_correct"] = False
-
 
 if st.session_state["password_correct"] == False:
     st.write("Wrong password in URL parameter 'password'")
@@ -49,10 +94,11 @@ if st.session_state["password_correct"] == False:
 scope = ['https://spreadsheets.google.com/feeds',
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive']
-credentials = ServiceAccountCredentials.from_json_keyfile_name('gsheetscreds.json', scope)
-gc = gspread.authorize(credentials)
+
+gc = get_db_conn('gsheetscreds.json', scope)
 spreadsheet_id = st.secrets["GSHEET_ID"]
-db = gc.open_by_key(spreadsheet_id).sheet1
+db = get_db_sheet(gc, spreadsheet_id, 0)
+system_messages_db = get_db_sheet(gc, spreadsheet_id, 1)
 
 
 # The columns of the db
@@ -66,9 +112,12 @@ conversation_column = 7
 completion_tokens_column = 8
 prompt_tokens_column = 9
 password_column = 10
+error_column = 11
 
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = "gpt-4"
+    st.session_state["openai_backup_model"] = "gpt-3.5-turbo-16k"
+    st.session_state["error_messages"] = ""
     
     #Extract URL params
     url_params = st.experimental_get_query_params()
@@ -90,11 +139,11 @@ if "openai_model" not in st.session_state:
     
     # Write start time to db
     current_time = get_current_time_in_berlin()
-    db.update_cell(st.session_state["row_number"], start_time_column, current_time) # Set start time to current time in Berlin
+    write_to_db(db, st.session_state["row_number"], start_time_column, current_time) # Set start time to current time in Berlin
     
     # Write claim and credence vars to db
-    db.update_cell(st.session_state["row_number"], claim_column, st.session_state["claim"])
-    db.update_cell(st.session_state["row_number"], credence_column, st.session_state["credence"])
+    write_to_db(db, st.session_state["row_number"], claim_column, st.session_state["claim"])
+    write_to_db(db, st.session_state["row_number"], credence_column, st.session_state["credence"])
         
     # Initialize variables for completion tokens and prompt tokens
     st.session_state["completion_tokens"] = 0
@@ -105,54 +154,21 @@ if "openai_model" not in st.session_state:
     
     
 if st.session_state["claim"] == 0:
-    system_message = ("You're name is Diotima. You are a street epistemologist. You are friedly, curious and humble. You have an easy, concise, conversational style."
-                    "You gently let me see possible contradictions in my beliefs, and help me note beliefs that I am not well justified in holding." 
-                    "Have a conversation with me that helps me examine one of my beliefs."
-                    "1. Ask me my name. Do not continue before I answer."
-                    "2. Ask me first which belief I want to investigate. Point out that it should be a belief that I actually hold."
-                    "You provide examples; generate one concrete example from the domain of morality or religion, one concerning the impact of technology, one from politics." 
-                    "Do not proceed before I answer. Help me clarify my belief if necessary, as a street epistemologist would do."
-                    "Ask me to confirm the clarified belief before we move on." 
-                    "3. Ask me how confident I am in my belief, on a scale from 1-10. Don't proceed before I respond." 
-                    "4. Have a conversation with me that helps me investigate the epistemology of my belief, like street epistemologists do."
-                    "Guide me through questions to consider how my belief might be wrong, or unjustified."
-                    "If my confidence is lower than 10, ask me what prevents me from being fully confident."
-                    "Ask questions about my main reasons for my belief. Help me to gently challenge my beliefs, through questions." 
-                    "Ask questions one by one, and don't proceed to the next question before I have answered the earlier question." 
-                    "Ask plenty of follow-up questions when helpful."
-                    "Make sure to examine all reasons for my belief that I mention."
-                    "5. Ask me additional reasons for my belief, and also examine those additional reasons."
-                    "6. Summarize the conversation."
-                    "7. Ask me how confident I am in my belief after the conversation. Make sure not to judge my response. Don't point out you won't judge it. " 
-                    "8. Thank me for the conversation, and say goodbye. Literally use the word goodbye."
-                    "Don't talk to me about the purpose of the exercise. Do not introduce new facts, and don't be preachy.")
+    system_message_row = 2
+    system_message_column = 2
+    system_message = read_from_db(system_messages_db, system_message_row, system_message_column)
 else:
-    system_message = (f"You're name is Diotima. You are a street epistemologist. You are friedly, curious and humble. You have an easy, concise, conversational style."
-                    f"You gently let me see possible contradictions in my beliefs, and help me note beliefs that I am not well justified in holding." 
-                    f"Have a conversation with me that helps me examine one of my beliefs."
-                    f"1. Ask me my name. Do not continue before I answer."
-                    f"2. Remind me that I have earlier in a survey indicated that I endorse the belief {st.session_state['claim']}. Restate the belief literally, in quotation marks."
-                    f"Ask me whether I want to restate the belief in my own words, or whether I am happy with the way it is phrased. Do not proceed before I answer."
-                    f"3. Help me clarify my belief by laying out different things it might mean, as a street epistemologist would do."
-                    f"Ask me to confirm the clarified belief before we move on." 
-                    f"4. Remind me I indicated earlier in the survey that on a scale from 1-10, my credence in the belief was {st.session_state['credence']}. Confirm that this is still my credence. Don't proceed before I respond." 
-                    f"If my confidence is lower than 10, ask me what prevents me from being fully confident."
-                    f"5. Have a conversation with me that helps me investigate the epistemology of my belief, like street epistemologists do."
-                    f"Guide me through questions to consider how my belief might be wrong, or unjustified."
-                    f"If my confidence is lower than 10, ask me what prevents me from being fully confident."
-                    f"Ask questions about my main reasons for my belief. Help me to gently challenge my beliefs, through questions." 
-                    f"Ask questions one by one, and don't proceed to the next question before I have answered the earlier question." 
-                    f"Ask plenty of follow-up questions when helpful."
-                    f"Make sure to examine all reasons for my belief that I mention."
-                    f"6. Ask me additional reasons for my belief, and also examine those additional reasons."
-                    f"7. Summarize the conversation."
-                    f"8. Ask me how confident I am in my belief after the conversation. Make sure not to judge my response. Don't point out you won't judge it. " 
-                    f"9. Thank me for the conversation, and share with me a random aphanumeric code of length 8 that you generate, which I need to compelte the survey. Then say goodbye. Literally use the word goodbye."
-                    f"Don't talk to me about the purpose of the exercise. Do not introduce new facts, and don't be preachy.")
+    system_message_row = 3
+    system_message_column = 2
+    system_message = read_from_db(system_messages_db, system_message_row, system_message_column)
+    #Make an f-string
+    system_message = system_message.format(claim=st.session_state["claim"], credence=st.session_state["credence"])
+    print(system_message)
 
 opening_message = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
 
 
+### Main App ##
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -173,28 +189,23 @@ if st.session_state["input_active"] == 1:
         
         # Create promt to OpenAI
         with st.chat_message("assistant", avatar="🧑‍🎤"):
-            message_placeholder = st.empty()
-            full_response = ""
             
             # Create a list to store the complete prompt sent to OpenAI
             complete_prompt = [{"role": "user", "content": system_message}] + \
                             [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages]
-            # Estimating tokens for the prompt
-            prompt_tokens = num_tokens_from_prompt(complete_prompt)
         
             # Send the prompt to OpenAI, and get a response    
-            for response in openai.ChatCompletion.create(
-                model=st.session_state["openai_model"],
-                messages=complete_prompt,
-                stream=True,
-            ):
-                full_response += response.choices[0].delta.get("content", "")
-                message_placeholder.markdown(full_response + "▌") 
-                # Each response from the stream is one completion token  
-                st.session_state["completion_tokens"] += 1         
+            try:
+                full_response = chat_completion_with_backoff(st.session_state["openai_model"], complete_prompt)
+            except RetryError:
+                full_response = chat_completion_with_backoff(st.session_state["openai_backup_model"], complete_prompt)
             
-            message_placeholder.markdown(full_response)
+            # Update session state with new response
             st.session_state.messages.append({"role": "assistant", "content": full_response, "avatar": "🧑‍🎤"})
+
+            # Update vars for counting tokens
+            # Estimating tokens for the prompt
+            prompt_tokens = num_tokens_from_prompt(complete_prompt)
             st.session_state["prompt_tokens"] += prompt_tokens
             
             # If the chatbot uses the word goodbye, disable the input field.
@@ -210,18 +221,23 @@ if st.session_state["input_active"] == 1:
                     output_str += f"{message['role']}: {message['content']}\n"
                 output_str += f"assistant: {full_response}\n"
                 # Write string to db
-                db.update_cell(st.session_state["row_number"], conversation_column, output_str)
+                write_to_db(db, st.session_state["row_number"], conversation_column, output_str)
                 # Write name of respondent to db
-                db.update_cell(st.session_state["row_number"], name_column, st.session_state.messages[1]["content"])
+                write_to_db(db, st.session_state["row_number"], name_column, st.session_state.messages[1]["content"])
                 # Write number of completion tokens and prompt tokens to db
-                db.update_cell(st.session_state["row_number"], completion_tokens_column, st.session_state["completion_tokens"])
-                db.update_cell(st.session_state["row_number"], prompt_tokens_column, st.session_state["prompt_tokens"])
+                write_to_db(db, st.session_state["row_number"], completion_tokens_column, st.session_state["completion_tokens"])
+                write_to_db(db, st.session_state["row_number"], prompt_tokens_column, st.session_state["prompt_tokens"])
                 
-                db.update_cell(st.session_state["row_number"], password_column, st.session_state["password"])
+                #Write password to db
+                write_to_db(db, st.session_state["row_number"], password_column, st.session_state["password"])
+
+                #Write errors to db
+                write_to_db(db, st.session_state["row_number"], error_column, st.session_state["error_messages"])
+
 
                 # Write end_time to db
                 current_time = get_current_time_in_berlin()
-                db.update_cell(st.session_state["row_number"], end_time_column, current_time) # Set start time to current time in Berlin
+                write_to_db(db, st.session_state["row_number"], end_time_column, current_time) # Set start time to current time in Berlin
 
 else:
     st.chat_input("Write a message", key="input", disabled=True)
