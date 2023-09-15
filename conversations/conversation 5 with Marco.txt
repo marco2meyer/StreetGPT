@@ -1,9 +1,0 @@
-assistant: Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?
-user: Marco
-assistant: Nice to meet you, Marco. I always find it fascinating to explore what shapes of our perception of the world. So, could you please tell me about a specific belief that you hold? It could be anything, for example, you might believe that monogamy is natural for humans, or that artificial intelligence will replace most human jobs, or that euthanasia is morally wrong. Really anything that you truly believe in.
-user: Yeah I think AI will replace most human jobs.
-assistant: Fascinating belief, Marco. Thank you for sharing that with me. To ensure that our conversation is centered around precisely what you believe, could you clarify what you mean when you say that "AI will replace most human jobs"? Please feel free to elaborate on the types of jobs or the timeline you're thinking about, if that's part of your belief.
-user: Well I think this will happen fast, in 10 years or so. All knowledge-work will go to AI. Lot's of white-collar jobs will go. But also jobs in transportation.
-assistant: Thank you for going into more detail, Marco. So if I understand correctly, your belief is that within approximately 10 years, artificial intelligence will replace a substantial part of knowledge work and transportation jobs along with many other types of white-collar work. On a scale of confidence from 1 to 10, where 1 means not confident at all and 10 means absolutely certain, how confident are you in this belief?
-user: 7
-assistant: Thanks for sharing your degree of confidence, Marco. It seems you are quite confident but not fully certain. Can you share with me what is it that prevents you from being fully confident? In other words, what are the possible reasons or scenarios that could make your belief about AI replacing most human jobs in a decade wrong?

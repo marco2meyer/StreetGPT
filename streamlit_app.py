@@ -51,30 +51,68 @@ def num_tokens_from_prompt(prompt, encoding_name="cl100k_base") -> int:
     num_tokens = len(encoding.encode(string))
     return num_tokens
 
+#The actual call to OpenAI
+def handle_chat_completion(api_params):
+    full_response = ""
+    message_placeholder = st.empty()
+
+    try:
+        for response in openai.ChatCompletion.create(**api_params):
+            content_str = None  # Default value
+            if 'choices' in response and len(response['choices']) > 0:
+                choice = response['choices'][0]
+                if 'delta' in choice and 'content' in choice['delta']:
+                    content_str = choice['delta']['content']
+            if content_str:
+                full_response += response.choices[0].delta.get("content", "")
+
+            message_placeholder.markdown(full_response + "▌")
+            st.session_state["completion_tokens"] += 1
+        return full_response
+    except Exception as e:
+        st.session_state["error_messages"] += "from handle" + str(e) + "\n"
+        raise e
+
+
 # Function to query Open-AI
 @retry(
     stop=stop_after_attempt(2),
     wait=wait_random_exponential(min=2, max=5)
 )
-def chat_completion_with_backoff(model, prompt):
-    full_response = ""
-    message_placeholder = st.empty()
+def chat_completion_with_backoff(type, prompt):
+    
+    api_params_map = {
+        "azure": {
+            "api_type": "azure",
+            "api_base": st.secrets["AZURE_API_BASE"],
+            "api_key": st.secrets["AZURE_API_KEY"],
+            "api_version": st.secrets["AZURE_API_VERSION"],
+            "engine": st.secrets["AZURE_DEPLOYMENT_NAME"],
+            "messages": prompt,
+            "stream": True,
+        },
+        "openai_model": {
+            "api_key": st.secrets["OPENAI_API_KEY"],
+            "model": st.session_state["openai_model"],
+            "messages": prompt,
+            "stream": True,
+        },
+        "openai_backup": {
+            "api_key": st.secrets["OPENAI_API_KEY"],
+            "model": st.session_state["openai_backup_model"],
+            "messages": prompt,
+            "stream": True,
+        }
+    }
 
-    try:
-        for response in openai.ChatCompletion.create(
-                model=model,
-                messages=prompt,
-                stream=True
-        ):
-            full_response += response.choices[0].delta.get("content", "")
-            message_placeholder.markdown(full_response + "▌")
-            # Keep track of completion tokens
-            st.session_state["completion_tokens"] += 1
-
-        return full_response
-    except Exception as e:
-        st.session_state["error_messages"] += str(e) + "\n"
-        raise e
+    if type in api_params_map:
+        full_response = handle_chat_completion(api_params_map[type])
+    else:
+        # Handle the case where the type is not recognized
+        st.session_state["error_messages"] += f"Unrecognized type: {type}\n"
+        raise ValueError(f"Unrecognized type: {type}") 
+    
+    return full_response       
 
 
 ### Setup ##
@@ -113,18 +151,21 @@ completion_tokens_column = 8
 prompt_tokens_column = 9
 password_column = 10
 error_column = 11
+last_model_column = 12
 
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = "gpt-4"
     st.session_state["openai_backup_model"] = "gpt-3.5-turbo-16k"
+    
     st.session_state["error_messages"] = ""
+    st.session_state["last_model"] = ""
     
     #Extract URL params
     url_params = st.experimental_get_query_params()
     st.session_state["credence"] = int(url_params.get('credence', [0])[0])
     st.session_state["claim"] = url_params.get('claim', [0])[0]
     st.session_state["id"] = url_params.get('id', [0])[0]
-
+    st.session_state["language"] = url_params.get('language', ['english'])[0]
     
     # If no id is passed, generate random id and write to db
     if st.session_state["id"] == 0:
@@ -153,19 +194,34 @@ if "openai_model" not in st.session_state:
     st.session_state["input_active"] = 1
     
     
+opening_message_english = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
+opening_message_german = "Hallo, mein Name ist Diotima. Ich bin eine Philosophin, die dir helfen kann, deine Überzeugungen zu hinterfragen. Wie heißt du?"
+   
 if st.session_state["claim"] == 0:
     system_message_row = 2
-    system_message_column = 2
+    if st.session_state["language"] == 'german':
+        opening_message = opening_message_german
+        system_message_column = 3
+    else:    
+        system_message_column = 2
+        opening_message = opening_message_english
     system_message = read_from_db(system_messages_db, system_message_row, system_message_column)
 else:
     system_message_row = 3
-    system_message_column = 2
+    if st.session_state["language"] == 'german':
+        opening_message = opening_message_german
+        system_message_column = 3
+    else:    
+        opening_message = opening_message_english
+        system_message_column = 2
+        
     system_message = read_from_db(system_messages_db, system_message_row, system_message_column)
     #Make an f-string
     system_message = system_message.format(claim=st.session_state["claim"], credence=st.session_state["credence"])
     print(system_message)
 
-opening_message = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
+opening_message_english = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
+opening_message_german = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
 
 
 ### Main App ##
@@ -181,7 +237,7 @@ for message in st.session_state.messages:
 
 # allow users to send messages and process them 
 if st.session_state["input_active"] == 1:
-    openai.api = st.secrets["OPENAI_API_KEY"]
+  
     if prompt := st.chat_input("Write a message", key="input"):
         st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "🧐"})
         with st.chat_message("user", avatar="🧐"):
@@ -194,11 +250,17 @@ if st.session_state["input_active"] == 1:
             complete_prompt = [{"role": "user", "content": system_message}] + \
                             [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages]
         
-            # Send the prompt to OpenAI, and get a response    
+            # Send the prompt to OpenAI, and get a response  
             try:
-                full_response = chat_completion_with_backoff(st.session_state["openai_model"], complete_prompt)
+                st.session_state["last_model"] = "azure"
+                full_response = chat_completion_with_backoff(type="azure", prompt=complete_prompt)
             except RetryError:
-                full_response = chat_completion_with_backoff(st.session_state["openai_backup_model"], complete_prompt)
+                try:
+                    st.session_state["last_model"] = "openai_model"
+                    full_response = chat_completion_with_backoff(type="openai_model", prompt=complete_prompt)
+                except RetryError:
+                    st.session_state["last_model"] = "openai_backup"
+                    full_response = chat_completion_with_backoff(type="openai_backup", prompt=complete_prompt)
             
             # Update session state with new response
             st.session_state.messages.append({"role": "assistant", "content": full_response, "avatar": "🧑‍🎤"})
@@ -233,7 +295,9 @@ if st.session_state["input_active"] == 1:
 
                 #Write errors to db
                 write_to_db(db, st.session_state["row_number"], error_column, st.session_state["error_messages"])
-
+                
+                #Write model to db
+                write_to_db(db, st.session_state["row_number"], last_model_column, st.session_state["last_model"])
 
                 # Write end_time to db
                 current_time = get_current_time_in_berlin()

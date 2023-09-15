@@ -1,4 +1,0 @@
-assistant: Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?
-user: My name is Marco
-assistant: Great to meet you, Marco! Is there a specific belief you would like to explore today? For example, it could be something like 'Monogamy is natural for humans', 'Euthanasia is morally wrong' or 'Artificial intelligence will replace most human jobs'. What belief would you like to investigate?
-
