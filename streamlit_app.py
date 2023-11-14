@@ -194,8 +194,8 @@ if "openai_model" not in st.session_state:
     st.session_state["input_active"] = 1
     
     
-opening_message_english = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
-opening_message_german = "Hallo, mein Name ist Diotima. Ich bin eine Philosophin, die dir helfen kann, deine Überzeugungen zu hinterfragen. Wie heißt du?"
+opening_message_english = "Hi there! I'm Chip. I'm here to help you explore and reflect on your beliefs. What's your name?"
+opening_message_german = "Hallo, mein Name ist Chip. Ich kann dir helfen, deine Überzeugungen zu hinterfragen. Wie heißt du?"
    
 if st.session_state["claim"] == 0:
     system_message_row = 2
@@ -219,10 +219,6 @@ else:
     #Make an f-string
     system_message = system_message.format(claim=st.session_state["claim"], credence=st.session_state["credence"])
     print(system_message)
-
-opening_message_english = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
-opening_message_german = "Hi, my name is Diotima. I am a street epistemologist that can help you examine your beliefs. What is your name?"
-
 
 ### Main App ##
 
