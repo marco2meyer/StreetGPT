@@ -194,7 +194,7 @@ if "openai_model" not in st.session_state:
     st.session_state["input_active"] = 1
     
     
-opening_message_english = "Hi there! I'm Chip. I'm here to help you explore and reflect on your beliefs. What's your name?"
+opening_message_english = "Hi there! I'm Chip. I'm here to help you explore and reflect on your beliefs. What's your nickname?"
 opening_message_german = "Hallo, mein Name ist Chip. Ich kann dir helfen, deine Überzeugungen zu hinterfragen. Wie heißt du?"
    
 if st.session_state["claim"] == 0:
