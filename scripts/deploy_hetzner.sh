@@ -71,7 +71,7 @@ scp "${PROJECT_ROOT}/.env" "${REMOTE_ALIAS}:${REMOTE_PATH}/.env"
 ssh "${REMOTE_ALIAS}" "chmod 600 '${REMOTE_PATH}/.env'"
 
 # 4) On remote: pull/build and start containers
-read -r -d '' REMOTE_CMD <<'EOF'
+read -r -d '' REMOTE_CMD <<'EOF' || true
 set -euo pipefail
 cd "__REMOTE_PATH__"
 

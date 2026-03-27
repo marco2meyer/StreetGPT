@@ -1,5 +1,4 @@
-version: "3.9"
-
+# Removed obsolete version key
 services:
   mongo:
     image: mongo:7
@@ -17,8 +16,8 @@ services:
     networks:
       - appnet
     # Uncomment to expose MongoDB externally (not recommended for prod)
-    ports:
-      - "27017:27017"
+    # ports:
+    #   - "27017:27017"
 
   app:
     build: .

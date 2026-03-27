@@ -1,15 +1,19 @@
-import tiktoken
-import streamlit as st
+import html
+import json
+import os
 import random
 import string
 from datetime import datetime
+
 import pytz
-from tenacity import retry, wait_random_exponential, stop_after_attempt, RetryError
-from openai import OpenAI
-from pymongo import MongoClient, ASCENDING
-from pymongo.errors import PyMongoError
-import os
+import streamlit as st
+import streamlit.components.v1 as components
+import tiktoken
 import yaml
+from openai import OpenAI
+from pymongo import ASCENDING, MongoClient
+from pymongo.errors import PyMongoError
+from tenacity import RetryError, retry, stop_after_attempt, wait_random_exponential
 
 ### Setup ##
 
@@ -17,6 +21,45 @@ def get_secret(name: str, default=None):
     # Read only from environment to avoid requiring a secrets.toml
     env_val = os.getenv(name)
     return env_val if (env_val is not None and env_val != "") else default
+
+
+def get_query_param(url_params: dict[str, list[str]], name: str, default=""):
+    value = url_params.get(name, [default])
+    if not value:
+        return default
+    return value[0]
+
+
+def parse_int_param(value, default=0) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_claim(value):
+    if value is None:
+        return 0
+    claim = str(value).strip()
+    return claim if claim else 0
+
+
+def normalize_language(value) -> str:
+    language = str(value or "english").strip().lower()
+    return language if language in {"english", "german"} else "english"
+
+
+def read_query_context():
+    url_params = st.experimental_get_query_params()
+    return {
+        "password": get_query_param(url_params, "password", "na"),
+        "credence": parse_int_param(get_query_param(url_params, "credence", 0), 0),
+        "claim": normalize_claim(get_query_param(url_params, "claim", "")),
+        "id": str(get_query_param(url_params, "id", "")).strip(),
+        "language": normalize_language(get_query_param(url_params, "language", "english")),
+        "prolific_pid": str(get_query_param(url_params, "prolific_pid", "")).strip(),
+        "return_url": str(get_query_param(url_params, "return_url", "")).strip(),
+    }
 
 # ---- Helper utilities (must be defined before first use) ----
 def generate_random_id(length=10):
@@ -40,8 +83,42 @@ def num_tokens_from_prompt(prompt, encoding_name="cl100k_base") -> int:
     num_tokens = len(encoding.encode(string_buf))
     return num_tokens
 
-url_params = st.experimental_get_query_params()
-st.session_state["password"] = url_params.get('password', ["na"])[0]
+
+def should_end_chat(response: str) -> bool:
+    lowered = response.lower()
+    return "goodbye" in lowered or "return to the survey" in lowered
+
+
+def render_return_handoff(return_url: str):
+    if not return_url:
+        return
+
+    safe_return_url = html.escape(return_url, quote=True)
+    st.markdown(
+        (
+            '<div style="margin-top: 1rem;">'
+            f'<a href="{safe_return_url}" target="_self" '
+            'style="display:inline-block;padding:0.6rem 1rem;'
+            'border-radius:0.5rem;border:1px solid #d0d7de;'
+            'text-decoration:none;font-weight:600;">Return to the survey</a>'
+            '</div>'
+        ),
+        unsafe_allow_html=True,
+    )
+    st.caption("You will be returned automatically in a few seconds if nothing happens.")
+    components.html(
+        f"""
+        <script>
+        window.setTimeout(function() {{
+          window.top.location.href = {json.dumps(return_url)};
+        }}, 4000);
+        </script>
+        """,
+        height=0,
+    )
+
+query_context = read_query_context()
+st.session_state["password"] = query_context["password"]
 
 # Centralized password: single PASSWORD from env or secrets
 password_secret = get_secret("PASSWORD", "")
@@ -187,16 +264,16 @@ if "openai_model" not in st.session_state:
     
     st.session_state["error_messages"] = ""
     st.session_state["last_model"] = ""
-    
-    #Extract URL params
-    url_params = st.experimental_get_query_params()
-    st.session_state["credence"] = int(url_params.get('credence', [0])[0])
-    st.session_state["claim"] = url_params.get('claim', [0])[0]
-    st.session_state["id"] = url_params.get('id', [0])[0]
-    st.session_state["language"] = url_params.get('language', ['english'])[0]
+
+    st.session_state["credence"] = query_context["credence"]
+    st.session_state["claim"] = query_context["claim"]
+    st.session_state["id"] = query_context["id"]
+    st.session_state["language"] = query_context["language"]
+    st.session_state["prolific_pid"] = query_context["prolific_pid"]
+    st.session_state["return_url"] = query_context["return_url"]
     
     # If no id is passed, generate random id and write to db
-    if st.session_state["id"] == 0:
+    if not st.session_state["id"]:
         st.session_state["id"] = generate_random_id()
     # Create conversation document (upsert by session_id)
     current_time = get_current_time_in_berlin()
@@ -210,6 +287,8 @@ if "openai_model" not in st.session_state:
                 "updated_at": current_time,
                 "claim": st.session_state["claim"],
                 "credence": st.session_state["credence"],
+                "prolific_pid": st.session_state["prolific_pid"],
+                "return_url": st.session_state["return_url"],
                 "password_used": st.session_state["password"],
                 "last_model": "",
                 "error_messages": "",
@@ -258,7 +337,14 @@ system_message = get_system_message(
 try:
     conversations_col.update_one(
         {"session_id": st.session_state["id"]},
-        {"$set": {"system_message": system_message}},
+        {"$set": {
+            "system_message": system_message,
+            "claim": st.session_state["claim"],
+            "credence": st.session_state["credence"],
+            "prolific_pid": st.session_state.get("prolific_pid", ""),
+            "return_url": st.session_state.get("return_url", ""),
+            "password_used": st.session_state["password"],
+        }},
         upsert=False,
     )
 except PyMongoError as e:
@@ -306,8 +392,8 @@ if st.session_state["input_active"] == 1:
             prompt_tokens = num_tokens_from_prompt(complete_prompt)
             st.session_state["prompt_tokens"] += prompt_tokens
             
-            # If the chatbot uses the word goodbye, disable the input field.
-            if "goodbye" in full_response.lower():
+            # Stop the chat once the handoff message is given.
+            if should_end_chat(full_response):
                 st.session_state["input_active"] = 0
 
             
@@ -328,6 +414,8 @@ if st.session_state["input_active"] == 1:
                             "prompt_tokens": st.session_state["prompt_tokens"],
                             "completion_tokens": st.session_state["completion_tokens"],
                             "password_used": st.session_state["password"],
+                            "prolific_pid": st.session_state.get("prolific_pid", ""),
+                            "return_url": st.session_state.get("return_url", ""),
                             "system_message": system_message,
                         },
                         "$push": {"messages": {"$each": messages_to_append}}
@@ -339,7 +427,9 @@ if st.session_state["input_active"] == 1:
 
 else:
     st.chat_input("Write a message", key="input", disabled=True)
-    del st.session_state["input"]
+    if "input" in st.session_state:
+        del st.session_state["input"]
+    render_return_handoff(st.session_state.get("return_url", ""))
 
 # To generate random IDs
 def generate_random_id(length=10):
