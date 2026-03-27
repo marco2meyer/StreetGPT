@@ -58,6 +58,8 @@ def read_query_context():
         "id": str(get_query_param(url_params, "id", "")).strip(),
         "language": normalize_language(get_query_param(url_params, "language", "english")),
         "prolific_pid": str(get_query_param(url_params, "prolific_pid", "")).strip(),
+        "study_id": str(get_query_param(url_params, "study_id", "")).strip(),
+        "session_id": str(get_query_param(url_params, "session_id", "")).strip(),
         "return_url": str(get_query_param(url_params, "return_url", "")).strip(),
     }
 
@@ -270,6 +272,8 @@ if "openai_model" not in st.session_state:
     st.session_state["id"] = query_context["id"]
     st.session_state["language"] = query_context["language"]
     st.session_state["prolific_pid"] = query_context["prolific_pid"]
+    st.session_state["study_id"] = query_context["study_id"]
+    st.session_state["session_id"] = query_context["session_id"]
     st.session_state["return_url"] = query_context["return_url"]
     
     # If no id is passed, generate random id and write to db
@@ -288,6 +292,8 @@ if "openai_model" not in st.session_state:
                 "claim": st.session_state["claim"],
                 "credence": st.session_state["credence"],
                 "prolific_pid": st.session_state["prolific_pid"],
+                "study_id": st.session_state["study_id"],
+                "prolific_session_id": st.session_state["session_id"],
                 "return_url": st.session_state["return_url"],
                 "password_used": st.session_state["password"],
                 "last_model": "",
@@ -342,6 +348,8 @@ try:
             "claim": st.session_state["claim"],
             "credence": st.session_state["credence"],
             "prolific_pid": st.session_state.get("prolific_pid", ""),
+            "study_id": st.session_state.get("study_id", ""),
+            "prolific_session_id": st.session_state.get("session_id", ""),
             "return_url": st.session_state.get("return_url", ""),
             "password_used": st.session_state["password"],
         }},
@@ -415,6 +423,8 @@ if st.session_state["input_active"] == 1:
                             "completion_tokens": st.session_state["completion_tokens"],
                             "password_used": st.session_state["password"],
                             "prolific_pid": st.session_state.get("prolific_pid", ""),
+                            "study_id": st.session_state.get("study_id", ""),
+                            "prolific_session_id": st.session_state.get("session_id", ""),
                             "return_url": st.session_state.get("return_url", ""),
                             "system_message": system_message,
                         },

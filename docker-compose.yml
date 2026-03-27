@@ -25,8 +25,8 @@ services:
     restart: unless-stopped
     depends_on:
       - mongo
-    ports:
-      - "8501:8501"
+    expose:
+      - "8501"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL}
@@ -39,8 +39,28 @@ services:
     networks:
       - appnet
 
+  caddy:
+    image: caddy:2.10
+    container_name: streetgpt-caddy
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SITE_HOST=${SITE_HOST:-91-98-77-78.sslip.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - appnet
+
 volumes:
   mongo_data:
+  caddy_data:
+  caddy_config:
 
 networks:
   appnet:

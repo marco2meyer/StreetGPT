@@ -1,0 +1,14 @@
+http://91.98.77.78 {
+	redir https://{$SITE_HOST:91-98-77-78.sslip.io}{uri} permanent
+}
+
+{$SITE_HOST:91-98-77-78.sslip.io} {
+	tls {
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+		}
+	}
+
+	encode zstd gzip
+	reverse_proxy app:8501
+}

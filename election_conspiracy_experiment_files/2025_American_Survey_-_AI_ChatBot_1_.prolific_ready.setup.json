@@ -1,0 +1,162 @@
+{
+  "input_qsf": "election_conspiracy_experiment_files/2025_American_Survey_-_AI_ChatBot (1).qsf",
+  "output_qsf": "election_conspiracy_experiment_files/2025_American_Survey_-_AI_ChatBot (1).prolific_ready.qsf",
+  "chatbot_public_url": "https://91-98-77-78.sslip.io/",
+  "qualtrics_url": "https://uwashington.qualtrics.com/jfe/form/SV_3k23UO2PJvuYb66",
+  "external_study_url": "https://uwashington.qualtrics.com/jfe/form/SV_3k23UO2PJvuYb66?PROLIFIC_PID={{%PROLIFIC_PID%}}&STUDY_ID={{%STUDY_ID%}}&SESSION_ID={{%SESSION_ID%}}",
+  "completion_codes": {
+    "complete": "9D6UBZPU",
+    "screenout": "67ZH7RV5",
+    "poor_quality": "SKALAQDV"
+  },
+  "prolific_payload": {
+    "name": "2025 American Survey - AI ChatBot",
+    "internal_name": "2025 American Survey - AI ChatBot",
+    "description": "Thank you for your interest in our study! We'd like to hear your opinions on social and political issues. This survey should only take 20 minutes to complete.\n\nIf you have any questions about the survey, please email Dr. Mert Can Bayar at: mbayar@uw.edu\n\nDuring this survey, you may be asked to discuss your opinions with an AI chatbot called Chip. Chip is powered by GPT-5.2 (developed by OpenAI). OpenAI has implemented safety measures designed to reduce harmful or offensive content, so the conversation should remain respectful and appropriate. Chip is programmed to ask questions only and will not state facts or express its own opinions. Your responses to Chip will be saved and used as data for this study. To make the chat feel more conversational, Chip will ask for a nickname. To protect your anonymity, please do not use your real name (or any other identifying information).\n\nNote: This study has been reviewed and approved by the University of Washington Institutional Review Board (IRB)",
+    "external_study_url": "https://uwashington.qualtrics.com/jfe/form/SV_3k23UO2PJvuYb66?PROLIFIC_PID={{%PROLIFIC_PID%}}&STUDY_ID={{%STUDY_ID%}}&SESSION_ID={{%SESSION_ID%}}",
+    "prolific_id_option": "url_parameters",
+    "estimated_completion_time": 20,
+    "device_compatibility": [
+      "desktop",
+      "mobile",
+      "tablet"
+    ],
+    "completion_codes": [
+      {
+        "code": "9D6UBZPU",
+        "code_type": "COMPLETED",
+        "actions": [
+          {
+            "action": "MANUALLY_REVIEW"
+          }
+        ]
+      },
+      {
+        "code": "67ZH7RV5",
+        "code_type": "SCREENED_OUT",
+        "actions": [
+          {
+            "action": "MANUALLY_REVIEW"
+          }
+        ]
+      },
+      {
+        "code": "SKALAQDV",
+        "code_type": "SCREENED_OUT",
+        "actions": [
+          {
+            "action": "MANUALLY_REVIEW"
+          }
+        ]
+      }
+    ],
+    "filters": [],
+    "maximum_allowed_time": 60
+  },
+  "prolific_result": null,
+  "published": false,
+  "token_check": {
+    "results": [
+      {
+        "id": "61112959c8018401b9831a65",
+        "title": "Uni Hamburg",
+        "description": "This is your default workspace.",
+        "owner": "609e2eb7b20617babde3b12b",
+        "users": [
+          {
+            "id": "609e2eb7b20617babde3b12b",
+            "name": "Marco Meyer",
+            "email": "marco.meyer@uni-hamburg.de",
+            "roles": [
+              "WORKSPACE_ADMIN"
+            ]
+          }
+        ],
+        "naivety_distribution_rate": -1,
+        "product": "human",
+        "is_trial_workspace": false,
+        "cloud_marketplace_account": null,
+        "is_excluded_from_demographic_export_filter_limit": false
+      },
+      {
+        "id": "62df7ce20dbe14f60ee9ea85",
+        "title": "Alfano",
+        "description": "This is your initial workspace.",
+        "owner": "62df7ce20dbe14f60ee9ea84",
+        "users": [
+          {
+            "id": "62df7ce20dbe14f60ee9ea84",
+            "name": "Mark Alfano",
+            "email": "mark.alfano@mq.edu.au",
+            "roles": [
+              "WORKSPACE_ADMIN"
+            ]
+          },
+          {
+            "id": "609e2eb7b20617babde3b12b",
+            "name": "Marco Meyer",
+            "email": "marco.meyer@uni-hamburg.de",
+            "roles": [
+              "WORKSPACE_COLLABORATOR"
+            ]
+          }
+        ],
+        "naivety_distribution_rate": -1,
+        "product": "human",
+        "is_trial_workspace": false,
+        "cloud_marketplace_account": null,
+        "is_excluded_from_demographic_export_filter_limit": false
+      },
+      {
+        "id": "684873548affab13f32cc38e",
+        "title": "aiinterviews",
+        "description": "",
+        "owner": "609e2eb7b20617babde3b12b",
+        "users": [
+          {
+            "id": "609e2eb7b20617babde3b12b",
+            "name": "Marco Meyer",
+            "email": "marco.meyer@uni-hamburg.de",
+            "roles": [
+              "WORKSPACE_ADMIN"
+            ]
+          },
+          {
+            "id": "680fac234c3e593793b4dc37",
+            "name": "Kate Vredenburgh",
+            "email": "k.vredenburgh@lse.ac.uk",
+            "roles": [
+              "WORKSPACE_COLLABORATOR"
+            ]
+          }
+        ],
+        "naivety_distribution_rate": -1,
+        "product": "human",
+        "is_trial_workspace": false,
+        "cloud_marketplace_account": null,
+        "is_excluded_from_demographic_export_filter_limit": false
+      }
+    ],
+    "_links": {
+      "self": {
+        "title": "Current",
+        "href": "https://api.prolific.com/api/v1/workspaces/"
+      },
+      "next": {
+        "href": null,
+        "title": "Next"
+      },
+      "previous": {
+        "href": null,
+        "title": "Previous"
+      },
+      "last": {
+        "href": "https://api.prolific.com/api/v1/workspaces/",
+        "title": "Last"
+      }
+    },
+    "meta": {
+      "count": 3
+    }
+  }
+}

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deploy StreetGPT (app + MongoDB) to Hetzner via SSH.
+# Deploy StreetGPT (app + MongoDB + HTTPS reverse proxy) to Hetzner via SSH.
 # Prereqs:
 # - SSH config alias "hetzner_streetgpt" is set and reachable (see ~/.ssh/config)
 # - Remote server has Docker and Docker Compose v2 installed
-# - Your local repo contains docker-compose.yml and Dockerfile
+# - Your local repo contains docker-compose.yml, Dockerfile, and Caddyfile
 # - Your local .env holds all required env vars (will be copied securely)
 #
 # Usage:
@@ -15,9 +15,9 @@ set -euo pipefail
 #   scripts/deploy_hetzner.sh /opt/streetgpt
 #
 # Notes:
-# - We DO NOT expose Mongo publicly by default in production. Your current
-#   docker-compose.yml maps 27017:27017. Consider removing the port mapping or
-#   firewalling to your IP only.
+# - The app is served through Caddy on ports 80/443. Streamlit itself stays
+#   on the internal Docker network and is no longer exposed directly.
+# - We DO NOT expose Mongo publicly by default in production.
 # - The script copies .env with mode 600 on the server.
 
 REMOTE_ALIAS=${REMOTE_ALIAS:-hetzner_streetgpt}
@@ -93,6 +93,36 @@ $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sou
   sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 
+# Ensure SITE_HOST is present for the Caddy config. Prefer an explicit hostname
+# in .env. If it is missing, or if it is just a raw IPv4 address, derive a
+# browser-friendly sslip.io hostname from the server's public IPv4 address.
+SITE_HOST="$(awk -F= '/^SITE_HOST=/{print $2; exit}' .env || true)"
+PUBLIC_IP=""
+if printf '%s' "${SITE_HOST}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+  PUBLIC_IP="${SITE_HOST}"
+  SITE_HOST=""
+fi
+if [ -z "${PUBLIC_IP}" ]; then
+  PUBLIC_IP="$(curl -4fsS https://api.ipify.org || true)"
+fi
+if [ -z "${PUBLIC_IP}" ]; then
+  PUBLIC_IP="$(hostname -I | awk '{print $1}')"
+fi
+if [ -z "${PUBLIC_IP}" ]; then
+  echo "[remote] Unable to determine the server IPv4 address. Set SITE_HOST in .env and rerun." >&2
+  exit 1
+fi
+if [ -z "${SITE_HOST}" ]; then
+  SITE_HOST="${PUBLIC_IP//./-}.sslip.io"
+fi
+if grep -q '^SITE_HOST=' .env; then
+  sed -i "s/^SITE_HOST=.*/SITE_HOST=${SITE_HOST}/" .env
+else
+  printf '\nSITE_HOST=%s\n' "${SITE_HOST}" >> .env
+fi
+
+echo "[remote] Using SITE_HOST=${SITE_HOST}"
+
 # choose docker compose shim (use sudo to avoid group issues in non-login shell)
 if docker compose version >/dev/null 2>&1; then
   DC="sudo docker compose"
@@ -109,8 +139,25 @@ $DC up -d --build
 # prune old images (safe: dangling only)
 docker image prune -f >/dev/null 2>&1 || true
 
+# Wait for the HTTPS front door to come up on the configured host.
+healthy=0
+for _ in $(seq 1 45); do
+  if curl -kfsS --connect-timeout 5 --resolve "${SITE_HOST}:443:127.0.0.1" "https://${SITE_HOST}/_stcore/health" >/dev/null 2>&1; then
+    healthy=1
+    break
+  fi
+  sleep 2
+done
+if [ "${healthy}" -ne 1 ]; then
+  echo "[remote] HTTPS health check failed for https://${SITE_HOST}/_stcore/health" >&2
+  $DC ps >&2 || true
+  $DC logs --tail=100 caddy app >&2 || true
+  exit 1
+fi
+
 # print status
 $DC ps
+echo "[remote] HTTPS endpoint is ready at https://${SITE_HOST}/"
 EOF
 
 # Inject path into remote command and run
@@ -124,7 +171,7 @@ bold "Deployment completed."
 echo ""
 bold "Post-deploy checks"
 cat <<POST
-- Verify app: http://<server-ip>:8501/
+- Verify app: https://<site-host>/
 - Logs: ssh ${REMOTE_ALIAS} "docker compose -f ${REMOTE_PATH}/docker-compose.yml logs -f --tail=100"
-- If Mongo port 27017 is exposed, firewall it or remove the mapping from docker-compose.yml in production.
+- Mongo is not exposed publicly by default. Keep it that way in production.
 POST
