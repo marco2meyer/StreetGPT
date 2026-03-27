@@ -38,7 +38,7 @@ def load_env_file(path: Path) -> dict[str, str]:
 
 
 def compact_json(data: Any) -> str:
-    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(data, ensure_ascii=True, separators=(",", ":"))
 
 
 def slugify_filename(value: str) -> str:
@@ -109,7 +109,10 @@ def derive_intro_description(qsf: dict[str, Any]) -> str:
 
 def extract_existing_chatbot_url(qsf_path: Path) -> str:
     qsf = json.loads(qsf_path.read_text(encoding="utf-8"))
-    question = find_question(qsf, "QID399")
+    try:
+        question = find_question(qsf, "QID399")
+    except ValueError:
+        return ""
     question_js = question.get("Payload", {}).get("QuestionJS", "")
     match = re.search(r'var CHATBOT_BASE_URL = "([^"]+)";', question_js)
     if not match:
@@ -143,6 +146,23 @@ def find_question(qsf: dict[str, Any], qid: str) -> dict[str, Any]:
     raise ValueError(f"Could not find question {qid} in the QSF")
 
 
+def find_chatbot_block(qsf: dict[str, Any]) -> dict[str, Any]:
+    blocks_element = next(
+        (element for element in qsf.get("SurveyElements", []) if element.get("Element") == "BL"),
+        None,
+    )
+    if not blocks_element:
+        raise ValueError("Could not find the Qualtrics block payload in the QSF")
+
+    payload = blocks_element.get("Payload", {})
+    for block in payload.values():
+        if not isinstance(block, dict):
+            continue
+        if block.get("ID") == "BL_0eOlvXtb4Or1i1o" or block.get("Description") == "AI Chat Bot -- Redirection":
+            return block
+    raise ValueError("Could not find the AI Chat Bot -- Redirection block in the QSF")
+
+
 def make_embedded_data_field(
     field_name: str,
     variable_type: str = "String",
@@ -169,18 +189,11 @@ def ensure_embedded_data_fields(flow_element: dict[str, Any], field_specs: list[
 
     embedded_items = flow_items[0].setdefault("EmbeddedData", [])
     existing_fields = {item.get("Field") for item in embedded_items}
-    prolific_index = next(
-        (index for index, item in enumerate(embedded_items) if item.get("Field") == "PROLIFIC_PID"),
-        len(embedded_items) - 1,
-    )
-    insert_at = prolific_index + 1
-
     for field_spec in field_specs:
         field_name = field_spec["Field"]
         if field_name in existing_fields:
             continue
-        embedded_items.insert(insert_at, field_spec)
-        insert_at += 1
+        embedded_items.append(field_spec)
         existing_fields.add(field_name)
 
 
@@ -208,45 +221,219 @@ def patch_prolific_redirects(qsf: dict[str, Any], codes: dict[str, str]) -> None
             break
 
 
-def patch_chatbot_question_js(question_js: str, chatbot_url: str, password: str) -> str:
-    updated = re.sub(
-        r'var CHATBOT_BASE_URL = "[^"]+";',
-        f'var CHATBOT_BASE_URL = {json.dumps(chatbot_url)};',
-        question_js,
-        count=1,
-    )
-    updated = re.sub(
-        r'var PASSWORD = "[^"]+";',
-        f'var PASSWORD = {json.dumps(password)};',
-        updated,
-        count=1,
+def build_chatbot_question_js(chatbot_url: str, password: str) -> str:
+    return "\n".join(
+        [
+            "Qualtrics.SurveyEngine.addOnReady(function() {",
+            f"  var CHATBOT_BASE_URL = {json.dumps(chatbot_url)};",
+            f"  var PASSWORD = {json.dumps(password)};",
+            '  var RESPONSE_ID = "${e://Field/ResponseID}";',
+            '  var PROLIFIC_PID = "${e://Field/PROLIFIC_PID}";',
+            '  var STUDY_ID = "${e://Field/STUDY_ID}";',
+            '  var SESSION_ID = "${e://Field/SESSION_ID}";',
+            "",
+            "  function readEmbedded(name) {",
+            "    var value = Qualtrics.SurveyEngine.getJSEmbeddedData(name);",
+            '    return value == null ? "" : String(value);',
+            "  }",
+            "",
+            "  function writeEmbedded(name, value) {",
+            '    Qualtrics.SurveyEngine.setJSEmbeddedData(name, value == null ? "" : String(value));',
+            "  }",
+            "",
+            '  var CONTROL_FLAG = readEmbedded("control_flag");',
+            '  var CONTROL_CLAIM = readEmbedded("control_claim");',
+            "",
+            "  function readQueryParam(name) {",
+            "    return new URL(window.location.href).searchParams.get(name) || \"\";",
+            "  }",
+            "",
+            "  function parseScore(value) {",
+            "    var parsed = parseInt(String(value || \"\").trim(), 10);",
+            "    return isNaN(parsed) ? null : parsed;",
+            "  }",
+            "",
+            "  function clickNext() {",
+            '    var nextButton = document.getElementById("NextButton");',
+            "    if (nextButton) {",
+            "      nextButton.click();",
+            "    }",
+            "  }",
+            "",
+            "  function buildEligibleClaims() {",
+            "    var claims = [];",
+            "",
+            "    function maybeAdd(score, claim, sourceQid) {",
+            "      if (score === null || score < 6) {",
+            "        return;",
+            "      }",
+            "      claims.push({ survey_claim: claim, survey_claim_initial_credence: score, survey_claim_source_qid: sourceQid });",
+            "    }",
+            "",
+            '    maybeAdd(parseScore("${q://QID224/SelectedAnswerRecode/2}"), "Election fraud was widespread enough to influence the outcome of the 2020 Presidential Elections in favor of Joe Biden.", "QID224/2");',
+            '    maybeAdd(parseScore("${q://QID224/SelectedAnswerRecode/8}"), "Democrats organize non-citizens (e.g., undocumented immigrants) to vote illegally in U.S. elections to rig elections.", "QID224/8");',
+            '    maybeAdd(parseScore("${q://QID224/SelectedAnswerRecode/10}"), "Democrats commit widespread voter fraud in U.S. elections through manipulating mail-in voting and voting machines.", "QID224/10");',
+            "",
+            "    maybeAdd(parseScore(\"${q://QID272/SelectedAnswerRecode/1}\"), \"Elon Musk's company, SpaceX, used its Starlink satellite technology to manipulate election results during the 2024 U.S. presidential election.\", \"QID272/1\");",
+            "    maybeAdd(parseScore(\"${q://QID272/SelectedAnswerRecode/2}\"), \"Donald Trump's campaign team coordinated with the Russian government to interfere in the 2016 Presidential Election.\", \"QID272/2\");",
+            '    maybeAdd(parseScore("${q://QID272/SelectedAnswerRecode/3}"), "Republicans won the presidential elections in 2016, 2004, and 2000 by stealing them.", "QID272/3");',
+            "",
+            '    maybeAdd(parseScore("${q://QID342/SelectedAnswerRecode/1}"), "Jeffrey Epstein, the billionaire accused of running an elite sex trafficking ring, was murdered to cover up the activities of his criminal network.", "QID342/1");',
+            '    maybeAdd(parseScore("${q://QID342/SelectedAnswerRecode/3}"), "There was a broad conspiracy, rather than a lone gunman, responsible for the assassination of President Kennedy.", "QID342/3");',
+            '    maybeAdd(parseScore("${q://QID342/SelectedAnswerRecode/4}"), "The truth about the harmful effects of vaccines is being deliberately hidden from the public.", "QID342/4");',
+            '    maybeAdd(parseScore("${q://QID342/SelectedAnswerRecode/5}"), "Regardless of who is officially in charge of governments and other organizations, there is a single group of people who secretly control events and rule the world together.", "QID342/5");',
+            "",
+            "    return claims;",
+            "  }",
+            "",
+            "  function buildReturnUrl() {",
+            "    var returnUrl = new URL(window.location.href);",
+            '    returnUrl.searchParams.set("chat_return", "1");',
+            "    if (PROLIFIC_PID) {",
+            '      returnUrl.searchParams.set("PROLIFIC_PID", PROLIFIC_PID);',
+            "    }",
+            "    if (STUDY_ID) {",
+            '      returnUrl.searchParams.set("STUDY_ID", STUDY_ID);',
+            "    }",
+            "    if (SESSION_ID) {",
+            '      returnUrl.searchParams.set("SESSION_ID", SESSION_ID);',
+            "    }",
+            "    return returnUrl.toString();",
+            "  }",
+            "",
+            "  function buildChatbotUrl(selected, returnUrl) {",
+            "    var chatbotUrl = new URL(CHATBOT_BASE_URL);",
+            "    var launchNonce = String(Date.now());",
+            '    chatbotUrl.searchParams.set("password", PASSWORD);',
+            '    chatbotUrl.searchParams.set("id", RESPONSE_ID);',
+            '    chatbotUrl.searchParams.set("launch_nonce", launchNonce);',
+            '    chatbotUrl.searchParams.set("return_url", returnUrl);',
+            '    chatbotUrl.searchParams.set("language", "english");',
+            '    chatbotUrl.searchParams.set("survey_claim", selected.survey_claim);',
+            '    chatbotUrl.searchParams.set("survey_claim_initial_credence", String(selected.survey_claim_initial_credence));',
+            "    if (CONTROL_FLAG) {",
+            '      chatbotUrl.searchParams.set("control_flag", CONTROL_FLAG);',
+            "    }",
+            "    if (CONTROL_CLAIM) {",
+            '      chatbotUrl.searchParams.set("control_claim", CONTROL_CLAIM);',
+            "    }",
+            "",
+            "    if (PROLIFIC_PID) {",
+            '      chatbotUrl.searchParams.set("prolific_pid", PROLIFIC_PID);',
+            "    }",
+            "    if (STUDY_ID) {",
+            '      chatbotUrl.searchParams.set("study_id", STUDY_ID);',
+            "    }",
+            "    if (SESSION_ID) {",
+            '      chatbotUrl.searchParams.set("session_id", SESSION_ID);',
+            "    }",
+            "    return chatbotUrl.toString();",
+            "  }",
+            "",
+            '  if (readQueryParam("chat_return") === "1") {',
+            '    writeEmbedded("discussion_claim", readQueryParam("discussion_claim"));',
+            '    writeEmbedded("discussion_claim_initial_credence", readQueryParam("discussion_claim_initial_credence"));',
+            '    writeEmbedded("discussion_claim_final_credence", readQueryParam("discussion_claim_final_credence"));',
+            "    window.setTimeout(clickNext, 400);",
+            "    return;",
+            "  }",
+            "",
+            "  var eligibleClaims = buildEligibleClaims();",
+            "  if (!eligibleClaims.length) {",
+            '    writeEmbedded("survey_claim", "");',
+            '    writeEmbedded("survey_claim_initial_credence", "");',
+            '    writeEmbedded("survey_claim_source_qid", "");',
+            '    writeEmbedded("chatbot_url", "");',
+            '    writeEmbedded("discussion_claim", "");',
+            '    writeEmbedded("discussion_claim_initial_credence", "");',
+            '    writeEmbedded("discussion_claim_final_credence", "");',
+            "    window.setTimeout(clickNext, 400);",
+            "    return;",
+            "  }",
+            "",
+            "  var selected = eligibleClaims[Math.floor(Math.random() * eligibleClaims.length)];",
+            "  var chatbotUrl = buildChatbotUrl(selected, buildReturnUrl());",
+            '  writeEmbedded("survey_claim", selected.survey_claim);',
+            '  writeEmbedded("survey_claim_initial_credence", String(selected.survey_claim_initial_credence));',
+            '  writeEmbedded("survey_claim_source_qid", selected.survey_claim_source_qid);',
+            '  writeEmbedded("chatbot_url", chatbotUrl);',
+            '  writeEmbedded("discussion_claim", "");',
+            '  writeEmbedded("discussion_claim_initial_credence", "");',
+            '  writeEmbedded("discussion_claim_final_credence", "");',
+            "  window.location.replace(chatbotUrl);",
+            "});",
+        ]
     )
 
-    prolific_pid_line = '  var PROLIFIC_PID = "${e://Field/PROLIFIC_PID}";\n'
-    study_session_lines = (
-        '  var STUDY_ID = "${e://Field/STUDY_ID}";\n'
-        '  var SESSION_ID = "${e://Field/SESSION_ID}";\n'
-    )
-    if 'var STUDY_ID = "${e://Field/STUDY_ID}";' not in updated:
-        updated = updated.replace(prolific_pid_line, prolific_pid_line + study_session_lines, 1)
 
-    prolific_pid_block = (
-        '    if (PROLIFIC_PID) {\n'
-        '      chatbotUrl.searchParams.set("prolific_pid", PROLIFIC_PID);\n'
-        '    }\n'
+def make_chatbot_redirect_question(qsf: dict[str, Any], qid: str, chatbot_url: str, password: str) -> dict[str, Any]:
+    survey_id = qsf.get("SurveyEntry", {}).get("SurveyID")
+    question_text = (
+        "We are preparing your StreetGPT follow-up. "
+        "If you are not redirected automatically within a few seconds, please wait a moment and then use the next arrow."
     )
-    extra_prolific_context = (
-        '    if (STUDY_ID) {\n'
-        '      chatbotUrl.searchParams.set("study_id", STUDY_ID);\n'
-        '    }\n'
-        '    if (SESSION_ID) {\n'
-        '      chatbotUrl.searchParams.set("session_id", SESSION_ID);\n'
-        '    }\n'
-    )
-    if 'chatbotUrl.searchParams.set("study_id", STUDY_ID);' not in updated:
-        updated = updated.replace(prolific_pid_block, prolific_pid_block + extra_prolific_context, 1)
+    return {
+        "SurveyID": survey_id,
+        "Element": "SQ",
+        "PrimaryAttribute": qid,
+        "SecondaryAttribute": question_text[:80],
+        "TertiaryAttribute": None,
+        "Payload": {
+            "QuestionText": question_text,
+            "DefaultChoices": False,
+            "DataExportTag": "chatbotRedirect",
+            "QuestionID": qid,
+            "QuestionType": "DB",
+            "Selector": "TB",
+            "DataVisibility": {"Private": False, "Hidden": False},
+            "Configuration": {"QuestionDescriptionOption": "UseText"},
+            "QuestionDescription": question_text,
+            "ChoiceOrder": [],
+            "Validation": {"Settings": {"Type": "None"}},
+            "GradingData": [],
+            "Language": [],
+            "NextChoiceId": 4,
+            "NextAnswerId": 1,
+            "QuestionJS": build_chatbot_question_js(chatbot_url, password),
+        },
+    }
 
-    return updated
+
+def ensure_chatbot_redirect_question(
+    qsf: dict[str, Any],
+    *,
+    chatbot_url: str,
+    password: str,
+    question_id: str = "QID399",
+) -> None:
+    chatbot_block = find_chatbot_block(qsf)
+    chatbot_block["BlockElements"] = [{"Type": "Question", "QuestionID": question_id}]
+
+    try:
+        question = find_question(qsf, question_id)
+    except ValueError:
+        question = make_chatbot_redirect_question(qsf, question_id, chatbot_url, password)
+        elements = qsf.setdefault("SurveyElements", [])
+        insert_index = next(
+            (index for index, element in enumerate(elements) if element.get("Element") == "STAT"),
+            len(elements),
+        )
+        elements.insert(insert_index, question)
+        return
+
+    payload = question.setdefault("Payload", {})
+    payload["QuestionText"] = (
+        "We are preparing your StreetGPT follow-up. "
+        "If you are not redirected automatically within a few seconds, please wait a moment and then use the next arrow."
+    )
+    payload["QuestionDescription"] = payload["QuestionText"]
+    payload["DataExportTag"] = "chatbotRedirect"
+    payload["QuestionType"] = "DB"
+    payload["Selector"] = "TB"
+    payload.setdefault("Configuration", {})["QuestionDescriptionOption"] = "UseText"
+    payload.setdefault("Validation", {}).setdefault("Settings", {})["Type"] = "None"
+    payload.setdefault("DataVisibility", {"Private": False, "Hidden": False})
+    payload["QuestionJS"] = build_chatbot_question_js(chatbot_url, password)
 
 
 def prepare_qsf(
@@ -261,21 +448,25 @@ def prepare_qsf(
     ensure_embedded_data_fields(
         survey_flow,
         [
+            make_embedded_data_field("PROLIFIC_PID"),
             make_embedded_data_field("STUDY_ID"),
             make_embedded_data_field("SESSION_ID"),
-            make_embedded_data_field("revised_claim_text"),
-            make_embedded_data_field("revised_claim_initial_credence", "Number"),
-            make_embedded_data_field("revised_claim_final_credence", "Number"),
+            make_embedded_data_field("control_flag"),
+            make_embedded_data_field("control_claim"),
+            make_embedded_data_field("chatbot_url"),
+            make_embedded_data_field("survey_claim"),
+            make_embedded_data_field("survey_claim_initial_credence", "Number"),
+            make_embedded_data_field("survey_claim_source_qid"),
+            make_embedded_data_field("discussion_claim"),
+            make_embedded_data_field("discussion_claim_initial_credence", "Number"),
+            make_embedded_data_field("discussion_claim_final_credence", "Number"),
         ],
     )
     patch_prolific_redirects(qsf, codes)
-
-    chatbot_question = find_question(qsf, "QID399")
-    payload = chatbot_question.setdefault("Payload", {})
-    payload["QuestionJS"] = patch_chatbot_question_js(
-        payload.get("QuestionJS", ""),
-        chatbot_url,
-        password,
+    ensure_chatbot_redirect_question(
+        qsf,
+        chatbot_url=chatbot_url,
+        password=password,
     )
 
     output_path.write_text(compact_json(qsf), encoding="utf-8")
@@ -409,7 +600,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--qsf",
-        default="election_conspiracy_experiment_files/2025_American_Survey_-_AI_ChatBot (1).qsf",
+        default="election_conspiracy_experiment_files/2025_American_Survey_original.qsf",
         help="Input Qualtrics QSF file.",
     )
     parser.add_argument(

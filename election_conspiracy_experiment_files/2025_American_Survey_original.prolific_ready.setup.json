@@ -1,6 +1,6 @@
 {
   "input_qsf": "election_conspiracy_experiment_files/2025_American_Survey_original.qsf",
-  "output_qsf": "election_conspiracy_experiment_files/2025_American_Survey_-_AI_ChatBot (1).prolific_ready.qsf",
+  "output_qsf": "election_conspiracy_experiment_files/2025_American_Survey_original.prolific_ready.qsf",
   "chatbot_public_url": "https://91-98-77-78.sslip.io/",
   "qualtrics_url": null,
   "external_study_url": null,
