@@ -143,7 +143,25 @@ def find_question(qsf: dict[str, Any], qid: str) -> dict[str, Any]:
     raise ValueError(f"Could not find question {qid} in the QSF")
 
 
-def ensure_embedded_data_fields(flow_element: dict[str, Any], field_names: list[str]) -> None:
+def make_embedded_data_field(
+    field_name: str,
+    variable_type: str = "String",
+    *,
+    analyze_text: bool | None = False,
+) -> dict[str, Any]:
+    field: dict[str, Any] = {
+        "Description": field_name,
+        "Type": "Recipient",
+        "Field": field_name,
+        "VariableType": variable_type,
+        "DataVisibility": [],
+    }
+    if variable_type == "String":
+        field["AnalyzeText"] = bool(analyze_text)
+    return field
+
+
+def ensure_embedded_data_fields(flow_element: dict[str, Any], field_specs: list[dict[str, Any]]) -> None:
     flow_payload = flow_element.get("Payload", {})
     flow_items = flow_payload.get("Flow", [])
     if not flow_items or flow_items[0].get("Type") != "EmbeddedData":
@@ -157,20 +175,11 @@ def ensure_embedded_data_fields(flow_element: dict[str, Any], field_names: list[
     )
     insert_at = prolific_index + 1
 
-    for field_name in field_names:
+    for field_spec in field_specs:
+        field_name = field_spec["Field"]
         if field_name in existing_fields:
             continue
-        embedded_items.insert(
-            insert_at,
-            {
-                "Description": field_name,
-                "Type": "Recipient",
-                "Field": field_name,
-                "VariableType": "String",
-                "DataVisibility": [],
-                "AnalyzeText": False,
-            },
-        )
+        embedded_items.insert(insert_at, field_spec)
         insert_at += 1
         existing_fields.add(field_name)
 
@@ -249,7 +258,16 @@ def prepare_qsf(
 ) -> dict[str, Any]:
     qsf = json.loads(qsf_path.read_text(encoding="utf-8"))
     survey_flow = find_survey_flow(qsf)
-    ensure_embedded_data_fields(survey_flow, ["STUDY_ID", "SESSION_ID"])
+    ensure_embedded_data_fields(
+        survey_flow,
+        [
+            make_embedded_data_field("STUDY_ID"),
+            make_embedded_data_field("SESSION_ID"),
+            make_embedded_data_field("revised_claim_text"),
+            make_embedded_data_field("revised_claim_initial_credence", "Number"),
+            make_embedded_data_field("revised_claim_final_credence", "Number"),
+        ],
+    )
     patch_prolific_redirects(qsf, codes)
 
     chatbot_question = find_question(qsf, "QID399")

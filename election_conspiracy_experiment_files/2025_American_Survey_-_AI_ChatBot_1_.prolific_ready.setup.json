@@ -5,9 +5,9 @@
   "qualtrics_url": "https://uwashington.qualtrics.com/jfe/form/SV_3k23UO2PJvuYb66",
   "external_study_url": "https://uwashington.qualtrics.com/jfe/form/SV_3k23UO2PJvuYb66?PROLIFIC_PID={{%PROLIFIC_PID%}}&STUDY_ID={{%STUDY_ID%}}&SESSION_ID={{%SESSION_ID%}}",
   "completion_codes": {
-    "complete": "9D6UBZPU",
-    "screenout": "67ZH7RV5",
-    "poor_quality": "SKALAQDV"
+    "complete": "NW87NZSD",
+    "screenout": "BQH8L67K",
+    "poor_quality": "7TH8TFPV"
   },
   "prolific_payload": {
     "name": "2025 American Survey - AI ChatBot",
@@ -23,7 +23,7 @@
     ],
     "completion_codes": [
       {
-        "code": "9D6UBZPU",
+        "code": "NW87NZSD",
         "code_type": "COMPLETED",
         "actions": [
           {
@@ -32,7 +32,7 @@
         ]
       },
       {
-        "code": "67ZH7RV5",
+        "code": "BQH8L67K",
         "code_type": "SCREENED_OUT",
         "actions": [
           {
@@ -41,7 +41,7 @@
         ]
       },
       {
-        "code": "SKALAQDV",
+        "code": "7TH8TFPV",
         "code_type": "SCREENED_OUT",
         "actions": [
           {
@@ -51,112 +51,153 @@
       }
     ],
     "filters": [],
-    "maximum_allowed_time": 60
+    "maximum_allowed_time": 60,
+    "reward": 500,
+    "total_available_places": 5
   },
-  "prolific_result": null,
-  "published": false,
-  "token_check": {
-    "results": [
-      {
-        "id": "61112959c8018401b9831a65",
-        "title": "Uni Hamburg",
-        "description": "This is your default workspace.",
-        "owner": "609e2eb7b20617babde3b12b",
-        "users": [
-          {
-            "id": "609e2eb7b20617babde3b12b",
-            "name": "Marco Meyer",
-            "email": "marco.meyer@uni-hamburg.de",
-            "roles": [
-              "WORKSPACE_ADMIN"
-            ]
-          }
-        ],
-        "naivety_distribution_rate": -1,
-        "product": "human",
-        "is_trial_workspace": false,
-        "cloud_marketplace_account": null,
-        "is_excluded_from_demographic_export_filter_limit": false
-      },
-      {
-        "id": "62df7ce20dbe14f60ee9ea85",
-        "title": "Alfano",
-        "description": "This is your initial workspace.",
-        "owner": "62df7ce20dbe14f60ee9ea84",
-        "users": [
-          {
-            "id": "62df7ce20dbe14f60ee9ea84",
-            "name": "Mark Alfano",
-            "email": "mark.alfano@mq.edu.au",
-            "roles": [
-              "WORKSPACE_ADMIN"
-            ]
-          },
-          {
-            "id": "609e2eb7b20617babde3b12b",
-            "name": "Marco Meyer",
-            "email": "marco.meyer@uni-hamburg.de",
-            "roles": [
-              "WORKSPACE_COLLABORATOR"
-            ]
-          }
-        ],
-        "naivety_distribution_rate": -1,
-        "product": "human",
-        "is_trial_workspace": false,
-        "cloud_marketplace_account": null,
-        "is_excluded_from_demographic_export_filter_limit": false
-      },
-      {
-        "id": "684873548affab13f32cc38e",
-        "title": "aiinterviews",
-        "description": "",
-        "owner": "609e2eb7b20617babde3b12b",
-        "users": [
-          {
-            "id": "609e2eb7b20617babde3b12b",
-            "name": "Marco Meyer",
-            "email": "marco.meyer@uni-hamburg.de",
-            "roles": [
-              "WORKSPACE_ADMIN"
-            ]
-          },
-          {
-            "id": "680fac234c3e593793b4dc37",
-            "name": "Kate Vredenburgh",
-            "email": "k.vredenburgh@lse.ac.uk",
-            "roles": [
-              "WORKSPACE_COLLABORATOR"
-            ]
-          }
-        ],
-        "naivety_distribution_rate": -1,
-        "product": "human",
-        "is_trial_workspace": false,
-        "cloud_marketplace_account": null,
-        "is_excluded_from_demographic_export_filter_limit": false
-      }
+  "prolific_result": {
+    "id": "69c696e1563cfabca4f5f9aa",
+    "name": "2025 American Survey - AI ChatBot",
+    "description": "Thank you for your interest in our study! We'd like to hear your opinions on social and political issues. This survey should only take 20 minutes to complete.\n\nIf you have any questions about the survey, please email Dr. Mert Can Bayar at: mbayar@uw.edu\n\nDuring this survey, you may be asked to discuss your opinions with an AI chatbot called Chip. Chip is powered by GPT-5.2 (developed by OpenAI). OpenAI has implemented safety measures designed to reduce harmful or offensive content, so the conversation should remain respectful and appropriate. Chip is programmed to ask questions only and will not state facts or express its own opinions. Your responses to Chip will be saved and used as data for this study. To make the chat feel more conversational, Chip will ask for a nickname. To protect your anonymity, please do not use your real name (or any other identifying information).\n\nNote: This study has been reviewed and approved by the University of Washington Institutional Review Board (IRB)",
+    "total_available_places": 5,
+    "reward": 500,
+    "average_reward_per_hour": 1500.0,
+    "external_study_url": "https://uwashington.qualtrics.com/jfe/form/SV_3k23UO2PJvuYb66?PROLIFIC_PID={{%PROLIFIC_PID%}}&STUDY_ID={{%STUDY_ID%}}&SESSION_ID={{%SESSION_ID%}}",
+    "video_platform": null,
+    "video_id": null,
+    "device_compatibility": [
+      "desktop",
+      "mobile",
+      "tablet"
     ],
-    "_links": {
-      "self": {
-        "title": "Current",
-        "href": "https://api.prolific.com/api/v1/workspaces/"
-      },
-      "next": {
-        "href": null,
-        "title": "Next"
-      },
-      "previous": {
-        "href": null,
-        "title": "Previous"
-      },
-      "last": {
-        "href": "https://api.prolific.com/api/v1/workspaces/",
-        "title": "Last"
+    "peripheral_requirements": [],
+    "researcher": {
+      "id": "609e2eb7b20617babde3b12b",
+      "name": "Marco Meyer",
+      "email": "marco.meyer@uni-hamburg.de",
+      "country": "DE",
+      "institution": {
+        "name": null,
+        "logo": null,
+        "link": ""
       }
     },
-    "meta": {
-      "count": 3
+    "publisher": null,
+    "places_taken": 0,
+    "study_type": "SINGLE",
+    "submissions_config": {
+      "max_submissions_per_participant": 1,
+      "max_concurrent_submissions": -1,
+      "auto_rejection_categories": []
+    },
+    "status": "UNPUBLISHED",
+    "internal_name": "2025 American Survey - AI ChatBot",
+    "minimum_reward_per_hour": 600.0,
+    "date_created": "2026-03-27T14:40:33.779000Z",
+    "published_at": null,
+    "number_of_submissions": 0,
+    "estimated_completion_time": 20,
+    "average_time_taken": 20,
+    "average_time_taken_seconds": 1200,
+    "completion_code": null,
+    "failed_attention_code": null,
+    "alternative_completion_codes": [],
+    "completion_code_action": null,
+    "last_email_update_sent_datetime": null,
+    "maximum_allowed_time": 60,
+    "receipt": null,
+    "eligible_participant_count": 235085,
+    "total_participant_pool": 251877,
+    "currency_code": "GBP",
+    "total_cost": 3333,
+    "fees_per_submission": 0.0,
+    "fees_percentage": 0.333333,
+    "service_margin_percentage": "0.25000000000000000",
+    "vat_percentage": 0.0,
+    "discount_from_coupons": 0,
+    "estimated_reward_per_hour": 1500.0,
+    "representative_sample": null,
+    "publish_at": null,
+    "prolific_id_option": "url_parameters",
+    "is_underpaying": false,
+    "average_reward_per_hour_without_adjustment": 1500.0,
+    "has_had_adjustment": false,
+    "reward_level": {
+      "below_prolific_min": false,
+      "below_original_estimate": false
+    },
+    "project": "61112959c8018401b9831a64",
+    "workspace": "61112959c8018401b9831a65",
+    "naivety_distribution_rate": -1,
+    "is_reallocated": false,
+    "external_app": null,
+    "external_id": null,
+    "privacy_notice": null,
+    "can_be_reallocated": false,
+    "reallocated_places": 0,
+    "progress_percentage": 0,
+    "completion_codes": [
+      {
+        "code": "NW87NZSD",
+        "code_type": "COMPLETED",
+        "actions": [
+          {
+            "action": "MANUALLY_REVIEW"
+          }
+        ],
+        "actor": "participant"
+      },
+      {
+        "code": "BQH8L67K",
+        "code_type": "SCREENED_OUT",
+        "actions": [
+          {
+            "action": "MANUALLY_REVIEW"
+          }
+        ],
+        "actor": "participant"
+      },
+      {
+        "code": "7TH8TFPV",
+        "code_type": "SCREENED_OUT",
+        "actions": [
+          {
+            "action": "MANUALLY_REVIEW"
+          }
+        ],
+        "actor": "participant"
+      }
+    ],
+    "metadata": null,
+    "filter_set_id": null,
+    "filter_set_version": null,
+    "filters": [],
+    "has_credentials": false,
+    "credential_pool_id": null,
+    "access_details_collection_id": null,
+    "access_details": null,
+    "data_collection_method": null,
+    "data_collection_id": null,
+    "data_collection_metadata": null,
+    "study_collection_id": null,
+    "study_labels": [],
+    "content_warnings": [],
+    "content_warning_details": null,
+    "is_trial_study": false,
+    "is_custom_screening": false,
+    "pii": {
+      "enabled": false
+    },
+    "is_authenticity_check": false,
+    "is_auth_check_llm": false,
+    "is_auth_check_bot": false,
+    "workflow_managed": false,
+    "_links": {
+      "self": {
+        "href": "https://api.prolific.com/api/v1/studies/",
+        "title": "Current"
+      }
     }
-  }
+  },
+  "published": false
 }

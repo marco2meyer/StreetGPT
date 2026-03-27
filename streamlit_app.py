@@ -2,8 +2,10 @@ import html
 import json
 import os
 import random
+import re
 import string
 from datetime import datetime
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import pytz
 import streamlit as st
@@ -117,6 +119,136 @@ def render_return_handoff(return_url: str):
         </script>
         """,
         height=0,
+    )
+
+
+def truncate_text(value: str, limit: int = 500) -> str:
+    collapsed = re.sub(r"\s+", " ", str(value or "")).strip()
+    return collapsed[:limit]
+
+
+def normalize_credence(value, default=None):
+    parsed = parse_int_param(value, 0)
+    if 1 <= parsed <= 10:
+        return parsed
+    return default
+
+
+def extract_json_object(raw_text: str) -> dict:
+    text = (raw_text or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        raise ValueError("No JSON object found in extractor response")
+    return json.loads(text[start:end + 1])
+
+
+def normalize_chat_outcome(raw_outcome: dict, seeded_claim, seeded_credence) -> dict:
+    seeded_claim_text = ""
+    if seeded_claim not in (None, 0, "0"):
+        seeded_claim_text = truncate_text(seeded_claim)
+
+    revised_claim_text = truncate_text(
+        raw_outcome.get("revised_claim_text") or raw_outcome.get("clarified_claim") or seeded_claim_text
+    )
+    initial_credence = normalize_credence(
+        raw_outcome.get("revised_claim_initial_credence") or raw_outcome.get("clarified_claim_initial_confidence"),
+        default=normalize_credence(seeded_credence, default=None),
+    )
+    final_credence = normalize_credence(
+        raw_outcome.get("revised_claim_final_credence") or raw_outcome.get("clarified_claim_final_confidence"),
+        default=None,
+    )
+    return {
+        "revised_claim_text": revised_claim_text,
+        "revised_claim_initial_credence": initial_credence,
+        "revised_claim_final_credence": final_credence,
+    }
+
+
+def build_chat_outcome(messages, seeded_claim, seeded_credence):
+    transcript_lines = []
+    for message in messages:
+        content = str(message.get("content", "")).strip()
+        role = str(message.get("role", "")).strip().lower()
+        if content and role in {"assistant", "user"}:
+            transcript_lines.append(f"{role.upper()}: {content}")
+    transcript = "\n\n".join(transcript_lines)
+
+    fallback = normalize_chat_outcome({}, seeded_claim, seeded_credence)
+    fallback["extractor_status"] = "fallback"
+    fallback["extractor_model"] = ""
+
+    if not transcript:
+        fallback["extractor_error"] = "empty_transcript"
+        return fallback
+
+    extraction_system = (
+        "You extract structured study outcomes from a finished Street Epistemology chat. "
+        "Return JSON only with keys revised_claim_text, revised_claim_initial_credence, and revised_claim_final_credence. "
+        "revised_claim_text should be the clarified or rephrased claim the participant actually endorsed for discussion. "
+        "revised_claim_initial_credence should be the 1-10 confidence they gave for that clarified claim near the start. "
+        "revised_claim_final_credence should be the 1-10 confidence they gave at the end after the discussion. "
+        "Use null for missing values. Do not infer a final credence unless the participant explicitly gives one."
+    )
+    seeded_claim_text = "" if seeded_claim in (None, 0, "0") else str(seeded_claim)
+    extraction_user = (
+        f"Seeded claim from the survey/app: {seeded_claim_text or 'null'}\n"
+        f"Seeded confidence from the survey/app: {seeded_credence if normalize_credence(seeded_credence, None) else 'null'}\n\n"
+        f"Transcript:\n{transcript}"
+    )
+    model = st.session_state.get("openai_model", get_secret("OPENAI_MODEL", "gpt-5"))
+
+    try:
+        request_kwargs = {
+            "model": model,
+            "input": [
+                {"role": "system", "content": extraction_system},
+                {"role": "user", "content": extraction_user},
+            ],
+        }
+        if str(model).lower().startswith("gpt-5"):
+            request_kwargs["reasoning"] = {"effort": "low"}
+        response = client.responses.create(**request_kwargs)
+        parsed = extract_json_object(response.output_text or "")
+        outcome = normalize_chat_outcome(parsed, seeded_claim, seeded_credence)
+        outcome["extractor_status"] = "ok"
+        outcome["extractor_model"] = model
+        return outcome
+    except Exception as e:
+        st.session_state["error_messages"] += f"chat_outcome_extract_error: {type(e).__name__}: {e}\n"
+        fallback["extractor_error"] = f"{type(e).__name__}: {e}"
+        fallback["extractor_model"] = model
+        return fallback
+
+
+def append_chat_outcome_to_return_url(return_url: str, chat_outcome: dict) -> str:
+    if not return_url:
+        return return_url
+
+    split_url = urlsplit(return_url)
+    params = dict(parse_qsl(split_url.query, keep_blank_values=True))
+    for field_name in (
+        "revised_claim_text",
+        "revised_claim_initial_credence",
+        "revised_claim_final_credence",
+    ):
+        value = chat_outcome.get(field_name)
+        if value in (None, ""):
+            params.pop(field_name, None)
+        else:
+            params[field_name] = str(value)
+    return urlunsplit(
+        (
+            split_url.scheme,
+            split_url.netloc,
+            split_url.path,
+            urlencode(params, doseq=True),
+            split_url.fragment,
+        )
     )
 
 query_context = read_query_context()
@@ -274,7 +406,12 @@ if "openai_model" not in st.session_state:
     st.session_state["prolific_pid"] = query_context["prolific_pid"]
     st.session_state["study_id"] = query_context["study_id"]
     st.session_state["session_id"] = query_context["session_id"]
+    st.session_state["return_url_base"] = query_context["return_url"]
     st.session_state["return_url"] = query_context["return_url"]
+    st.session_state["revised_claim_text"] = ""
+    st.session_state["revised_claim_initial_credence"] = None
+    st.session_state["revised_claim_final_credence"] = None
+    st.session_state["chat_outcome"] = {}
     
     # If no id is passed, generate random id and write to db
     if not st.session_state["id"]:
@@ -294,7 +431,12 @@ if "openai_model" not in st.session_state:
                 "prolific_pid": st.session_state["prolific_pid"],
                 "study_id": st.session_state["study_id"],
                 "prolific_session_id": st.session_state["session_id"],
+                "return_url_base": st.session_state["return_url_base"],
                 "return_url": st.session_state["return_url"],
+                "revised_claim_text": st.session_state["revised_claim_text"],
+                "revised_claim_initial_credence": st.session_state["revised_claim_initial_credence"],
+                "revised_claim_final_credence": st.session_state["revised_claim_final_credence"],
+                "chat_outcome": st.session_state["chat_outcome"],
                 "password_used": st.session_state["password"],
                 "last_model": "",
                 "error_messages": "",
@@ -350,7 +492,12 @@ try:
             "prolific_pid": st.session_state.get("prolific_pid", ""),
             "study_id": st.session_state.get("study_id", ""),
             "prolific_session_id": st.session_state.get("session_id", ""),
+            "return_url_base": st.session_state.get("return_url_base", ""),
             "return_url": st.session_state.get("return_url", ""),
+            "revised_claim_text": st.session_state.get("revised_claim_text", ""),
+            "revised_claim_initial_credence": st.session_state.get("revised_claim_initial_credence"),
+            "revised_claim_final_credence": st.session_state.get("revised_claim_final_credence"),
+            "chat_outcome": st.session_state.get("chat_outcome", {}),
             "password_used": st.session_state["password"],
         }},
         upsert=False,
@@ -402,6 +549,19 @@ if st.session_state["input_active"] == 1:
             
             # Stop the chat once the handoff message is given.
             if should_end_chat(full_response):
+                chat_outcome = build_chat_outcome(
+                    messages=st.session_state.messages,
+                    seeded_claim=st.session_state.get("claim", ""),
+                    seeded_credence=st.session_state.get("credence", 0),
+                )
+                st.session_state["chat_outcome"] = chat_outcome
+                st.session_state["revised_claim_text"] = chat_outcome.get("revised_claim_text", "")
+                st.session_state["revised_claim_initial_credence"] = chat_outcome.get("revised_claim_initial_credence")
+                st.session_state["revised_claim_final_credence"] = chat_outcome.get("revised_claim_final_credence")
+                st.session_state["return_url"] = append_chat_outcome_to_return_url(
+                    st.session_state.get("return_url_base", st.session_state.get("return_url", "")),
+                    chat_outcome,
+                )
                 st.session_state["input_active"] = 0
 
             
@@ -425,7 +585,12 @@ if st.session_state["input_active"] == 1:
                             "prolific_pid": st.session_state.get("prolific_pid", ""),
                             "study_id": st.session_state.get("study_id", ""),
                             "prolific_session_id": st.session_state.get("session_id", ""),
+                            "return_url_base": st.session_state.get("return_url_base", ""),
                             "return_url": st.session_state.get("return_url", ""),
+                            "revised_claim_text": st.session_state.get("revised_claim_text", ""),
+                            "revised_claim_initial_credence": st.session_state.get("revised_claim_initial_credence"),
+                            "revised_claim_final_credence": st.session_state.get("revised_claim_final_credence"),
+                            "chat_outcome": st.session_state.get("chat_outcome", {}),
                             "system_message": system_message,
                         },
                         "$push": {"messages": {"$each": messages_to_append}}
