@@ -1,3 +1,4 @@
+import base64
 import html
 import json
 import os
@@ -5,8 +6,7 @@ import random
 import re
 import string
 from datetime import datetime
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-
+from urllib.parse import quote
 import pytz
 import streamlit as st
 import streamlit.components.v1 as components
@@ -142,37 +142,115 @@ def num_tokens_from_prompt(prompt, encoding_name="cl100k_base") -> int:
 
 
 def should_end_chat(response: str) -> bool:
-    lowered = response.lower()
-    return "goodbye" in lowered or "return to the survey" in lowered
+    lowered = re.sub(r"\s+", " ", str(response or "")).strip().lower()
+    end_markers = (
+        "goodbye",
+        "return to the survey",
+        "thanks for the thoughtful chat",
+        "conversation is now complete",
+    )
+    return any(marker in lowered for marker in end_markers)
 
 
-def render_return_handoff(return_url: str):
+def extract_numeric_rating(text: str):
+    matches = re.findall(r"(?<!\d)(10|[0-9])(?!\d)", str(text or ""))
+    if len(matches) != 1:
+        return None
+    return int(matches[0])
+
+
+def is_endline_rating_prompt(message: str) -> bool:
+    lowered = re.sub(r"\s+", " ", str(message or "")).strip().lower()
+    return "where would you now place your confidence" in lowered
+
+
+def should_offer_return_button(previous_assistant_message: str, user_message: str) -> bool:
+    if not is_endline_rating_prompt(previous_assistant_message):
+        return False
+    rating = extract_numeric_rating(user_message)
+    return rating is not None and 0 <= rating <= 10
+
+
+def js_string_literal(value: str) -> str:
+    return json.dumps(str(value or "")).replace("</", "<\\/")
+
+
+def build_return_link_html(
+    return_url: str,
+    return_payload_token: str,
+    *,
+    auto_redirect_delay_ms: int | None = None,
+    compact: bool = False,
+) -> str:
+    bridge_url = (
+        "/return-bridge.html"
+        f"?return_url={quote(return_url, safe='')}"
+        f"&payload={quote(return_payload_token, safe='')}"
+    )
+    safe_bridge_url = html.escape(bridge_url, quote=True)
+    margin_top = "0.75rem" if compact else "1rem"
+    padding = "0.55rem 0.95rem" if compact else "0.6rem 1rem"
+
+    script = ""
+    if auto_redirect_delay_ms is not None:
+        script = (
+            '<meta http-equiv="refresh" '
+            f'content="{max(int(auto_redirect_delay_ms / 1000), 1)}; url={safe_bridge_url}">'
+        )
+
+    return (
+        script
+        + f'<div style="margin-top: {margin_top}; margin-bottom: 0.25rem;">'
+        + f'<a href="{safe_bridge_url}" target="_self" '
+        + f'style="display:inline-block;padding:{padding};'
+        + 'border-radius:0.5rem;border:1px solid #d0d7de;'
+        + 'text-decoration:none;font-weight:600;">Return to the survey</a>'
+        + "</div>"
+    )
+
+
+def render_inline_return_button(return_url: str, return_payload_token: str):
     if not return_url:
         return
-
-    safe_return_url = html.escape(return_url, quote=True)
     st.markdown(
-        (
-            '<div style="margin-top: 1rem;">'
-            f'<a href="{safe_return_url}" target="_self" '
-            'style="display:inline-block;padding:0.6rem 1rem;'
-            'border-radius:0.5rem;border:1px solid #d0d7de;'
-            'text-decoration:none;font-weight:600;">Return to the survey</a>'
-            '</div>'
+        build_return_link_html(return_url, return_payload_token, compact=True),
+        unsafe_allow_html=True,
+    )
+    st.caption("If the chat does not send you back after the goodbye message, use this button.")
+
+
+def trigger_rerun():
+    rerun = getattr(st, "rerun", None)
+    if callable(rerun):
+        rerun()
+        return
+    experimental_rerun = getattr(st, "experimental_rerun", None)
+    if callable(experimental_rerun):
+        experimental_rerun()
+
+
+def render_return_handoff(return_url: str, return_payload_token: str):
+    if not return_url:
+        st.markdown(
+            '<div style="margin-top: 1rem; padding: 1rem; '
+            'border-radius: 0.5rem; border: 1px solid #d0d7de; '
+            'text-align: center;">'
+            '<p style="font-weight: 600; margin: 0;">'
+            'Thank you! The conversation is now complete.</p>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.markdown(
+        build_return_link_html(
+            return_url,
+            return_payload_token,
+            auto_redirect_delay_ms=4000,
         ),
         unsafe_allow_html=True,
     )
     st.caption("You will be returned automatically in a few seconds if nothing happens.")
-    components.html(
-        f"""
-        <script>
-        window.setTimeout(function() {{
-          window.top.location.href = {json.dumps(return_url)};
-        }}, 4000);
-        </script>
-        """,
-        height=0,
-    )
 
 
 def truncate_text(value: str, limit: int = 500) -> str:
@@ -235,6 +313,28 @@ def normalize_chat_outcome(raw_outcome: dict, seeded_discussion_claim) -> dict:
     return compose_chat_outcome(discussion_claim, initial_credence, final_credence)
 
 
+def merge_chat_outcome_params(existing_params: dict[str, str], chat_outcome: dict) -> dict[str, str]:
+    params = dict(existing_params)
+    for legacy_field_name in (
+        "revised_claim",
+        "revised_claim_text",
+        "revised_claim_initial_credence",
+        "revised_claim_final_credence",
+    ):
+        params.pop(legacy_field_name, None)
+    for field_name in (
+        "discussion_claim",
+        "discussion_claim_initial_credence",
+        "discussion_claim_final_credence",
+    ):
+        value = chat_outcome.get(field_name)
+        if value in (None, ""):
+            params.pop(field_name, None)
+        else:
+            params[field_name] = str(value)
+    return params
+
+
 def build_chat_outcome(
     messages,
     seeded_discussion_claim,
@@ -264,17 +364,16 @@ def build_chat_outcome(
         "discussion_claim should be the clarified or rephrased version of the SURVEY CLAIM that the participant settled on near the start of the chat. "
         "discussion_claim_initial_credence should be the 1-10 confidence they gave for that clarified survey claim near the start of the chat, after clarification. "
         "discussion_claim_final_credence should be the 1-10 confidence they gave at the end for that same clarified survey claim. "
-        "If this is a control-condition transcript, the middle of the conversation may discuss a separate control claim. Ignore that and still extract only the clarified survey claim and its baseline/endline confidence. "
+        "In both treatment and control conditions, the conversation should stay on that same clarified survey claim throughout. "
+        "In the control condition, the middle of the conversation may use neutral, non-evaluative prompts rather than evidence-quality probes, but it is still about the same clarified claim. "
         "Use null for missing values. Do not infer a final credence unless the participant explicitly gives one."
     )
     seeded_claim_text = "" if seeded_discussion_claim in (None, 0, "0") else str(seeded_discussion_claim)
     survey_claim_text = "" if survey_claim in (None, 0, "0") else str(survey_claim)
-    control_claim_text = "" if control_claim in (None, 0, "0") else str(control_claim)
     extraction_user = (
         f"Condition: {'control' if control_flag else 'treatment'}\n"
         f"Survey claim measured in Qualtrics outside the chatbot: {survey_claim_text or 'null'}\n"
         f"Seeded discussion claim for the chatbot: {seeded_claim_text or 'null'}\n\n"
-        f"Separate control-claim discussion topic, if any: {control_claim_text or 'null'}\n\n"
         f"Transcript:\n{transcript}"
     )
     model = st.session_state.get("openai_model", get_secret("OPENAI_MODEL", "gpt-5"))
@@ -302,38 +401,12 @@ def build_chat_outcome(
         return fallback
 
 
-def append_chat_outcome_to_return_url(return_url: str, chat_outcome: dict) -> str:
-    if not return_url:
-        return return_url
-
-    split_url = urlsplit(return_url)
-    params = dict(parse_qsl(split_url.query, keep_blank_values=True))
-    for legacy_field_name in (
-        "revised_claim",
-        "revised_claim_text",
-        "revised_claim_initial_credence",
-        "revised_claim_final_credence",
-    ):
-        params.pop(legacy_field_name, None)
-    for field_name in (
-        "discussion_claim",
-        "discussion_claim_initial_credence",
-        "discussion_claim_final_credence",
-    ):
-        value = chat_outcome.get(field_name)
-        if value in (None, ""):
-            params.pop(field_name, None)
-        else:
-            params[field_name] = str(value)
-    return urlunsplit(
-        (
-            split_url.scheme,
-            split_url.netloc,
-            split_url.path,
-            urlencode(params, doseq=True),
-            split_url.fragment,
-        )
-    )
+def build_return_payload_token(chat_outcome: dict) -> str:
+    payload = merge_chat_outcome_params({"chat_return": "1"}, chat_outcome)
+    encoded = base64.b64encode(
+        json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).decode("ascii")
+    return f"streetgpt_return:{encoded}"
 
 query_context = read_query_context()
 st.session_state["password"] = query_context["password"]
@@ -535,6 +608,8 @@ if st.session_state.get("launch_signature") != launch_signature:
     st.session_state["return_url_base"] = query_context["return_url"]
     st.session_state["return_url"] = query_context["return_url"]
     st.session_state["chat_outcome"] = {}
+    st.session_state["return_payload_token"] = ""
+    st.session_state["return_button_visible"] = False
 
     # If no id is passed, generate random id and write to db
     if not st.session_state["id"]:
@@ -639,9 +714,8 @@ except PyMongoError as e:
 
 ### Main App ##
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-    st.session_state.messages.append({"role": "assistant", "content": opening_message, "avatar": "🧑‍🎤"})
+if not st.session_state.get("messages"):
+    st.session_state.messages = [{"role": "assistant", "content": opening_message, "avatar": "🧑‍🎤"}]
 
 # Show chat messages in streamlit
 for message in st.session_state.messages:
@@ -650,8 +724,20 @@ for message in st.session_state.messages:
 
 # allow users to send messages and process them 
 if st.session_state["input_active"] == 1:
-  
-    if prompt := st.chat_input("Write a message", key="input"):
+    prompt = st.chat_input("Write a message", key="input")
+
+    if prompt:
+        handoff_ready = False
+        previous_assistant_message = next(
+            (
+                message["content"]
+                for message in reversed(st.session_state.messages)
+                if message.get("role") == "assistant"
+            ),
+            "",
+        )
+        if should_offer_return_button(previous_assistant_message, prompt):
+            st.session_state["return_button_visible"] = True
         st.session_state.messages.append({"role": "user", "content": prompt, "avatar": "🧐"})
         with st.chat_message("user", avatar="🧐"):
             st.markdown(prompt)
@@ -692,11 +778,13 @@ if st.session_state["input_active"] == 1:
                 st.session_state["discussion_claim"] = chat_outcome.get("discussion_claim", "")
                 st.session_state["discussion_claim_initial_credence"] = chat_outcome.get("discussion_claim_initial_credence")
                 st.session_state["discussion_claim_final_credence"] = chat_outcome.get("discussion_claim_final_credence")
-                st.session_state["return_url"] = append_chat_outcome_to_return_url(
-                    st.session_state.get("return_url_base", st.session_state.get("return_url", "")),
-                    chat_outcome,
+                st.session_state["return_url"] = st.session_state.get(
+                    "return_url_base",
+                    st.session_state.get("return_url", ""),
                 )
+                st.session_state["return_payload_token"] = build_return_payload_token(chat_outcome)
                 st.session_state["input_active"] = 0
+                handoff_ready = True
 
             
             # Persist conversation to MongoDB
@@ -738,11 +826,23 @@ if st.session_state["input_active"] == 1:
             except PyMongoError as e:
                 st.session_state["error_messages"] += f"Mongo persist error: {e}\n"
 
+            if handoff_ready:
+                trigger_rerun()
+
+    if st.session_state.get("return_button_visible"):
+        render_inline_return_button(
+            st.session_state.get("return_url", ""),
+            st.session_state.get("return_payload_token", ""),
+        )
+
 else:
     st.chat_input("Write a message", key="input", disabled=True)
     if "input" in st.session_state:
         del st.session_state["input"]
-    render_return_handoff(st.session_state.get("return_url", ""))
+    render_return_handoff(
+        st.session_state.get("return_url", ""),
+        st.session_state.get("return_payload_token", ""),
+    )
 
 # To generate random IDs
 def generate_random_id(length=10):

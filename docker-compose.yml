@@ -13,11 +13,10 @@ services:
     volumes:
       - mongo_data:/data/db
       - ./mongo-init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${MONGO_PUBLIC_BIND:-0.0.0.0}:${MONGO_PUBLIC_PORT:-27017}:27017"
     networks:
       - appnet
-    # Uncomment to expose MongoDB externally (not recommended for prod)
-    # ports:
-    #   - "27017:27017"
 
   app:
     build: .
@@ -52,6 +51,7 @@ services:
       - SITE_HOST=${SITE_HOST:-91-98-77-78.sslip.io}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-static:/srv/caddy-static:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:

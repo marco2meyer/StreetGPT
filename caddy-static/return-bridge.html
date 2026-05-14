@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Returning to survey...</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        margin: 0;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      main {
+        padding: 2rem;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>Returning you to the survey...</p>
+      <p><a id="fallback" href="/">Continue manually if needed.</a></p>
+    </main>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var returnUrl = params.get("return_url") || "/";
+        var payload = params.get("payload") || "";
+        var fallback = document.getElementById("fallback");
+        if (fallback) {
+          fallback.href = returnUrl;
+        }
+        try {
+          if (payload) {
+            window.name = payload;
+          }
+        } catch (e) {}
+        window.location.replace(returnUrl);
+      })();
+    </script>
+  </body>
+</html>
