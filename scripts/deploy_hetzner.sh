@@ -1,23 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deploy StreetGPT (app + MongoDB + HTTPS reverse proxy) to Hetzner via SSH.
+# Deploy StreetGPT (app + MongoDB + reverse proxy) to Hetzner via SSH.
 # Prereqs:
-# - SSH config alias "hetzner_streetgpt" is set and reachable (see ~/.ssh/config)
+# - SSH config alias "hetzner_streetgpt" (override with REMOTE_ALIAS=...) is
+#   set and reachable (see ~/.ssh/config)
 # - Remote server has Docker and Docker Compose v2 installed
 # - Your local repo contains docker-compose.yml, Dockerfile, and Caddyfile
 # - Your local .env holds all required env vars (will be copied securely)
 #
 # Usage:
 #   scripts/deploy_hetzner.sh [remote_path]
+#   REMOTE_ALIAS=conspiracy_generator scripts/deploy_hetzner.sh
 #
 # Example:
 #   scripts/deploy_hetzner.sh /opt/streetgpt
 #
 # Notes:
-# - The app is served through Caddy on ports 80/443. Streamlit itself stays
-#   on the internal Docker network and is no longer exposed directly.
-# - We DO NOT expose Mongo publicly by default in production.
+# - The app is served through Caddy on ports 80/443 with Let's Encrypt-issued
+#   certs. SITE_HOST in .env controls the hostname; if missing or set to a raw
+#   IPv4, the script derives a sslip.io hostname from the server's public IP.
+# - We DO expose Mongo on host port 27017 for backups / admin tooling. Lock this
+#   down at the firewall in production if needed.
 # - The script copies .env with mode 600 on the server.
 
 REMOTE_ALIAS=${REMOTE_ALIAS:-hetzner_streetgpt}
@@ -172,6 +176,6 @@ echo ""
 bold "Post-deploy checks"
 cat <<POST
 - Verify app: https://<site-host>/
-- Logs: ssh ${REMOTE_ALIAS} "docker compose -f ${REMOTE_PATH}/docker-compose.yml logs -f --tail=100"
-- Mongo is not exposed publicly by default. Keep it that way in production.
+- Logs: ssh ${REMOTE_ALIAS} "cd ${REMOTE_PATH} && sudo docker compose logs -f --tail=100"
+- Mongo is exposed on host port 27017. Restrict at the firewall if needed.
 POST

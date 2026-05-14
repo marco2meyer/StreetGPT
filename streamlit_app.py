@@ -65,7 +65,8 @@ def parse_bool_param(value, default=False) -> bool:
 
 
 def read_query_context():
-    url_params = st.experimental_get_query_params()
+    qp = st.query_params
+    url_params = {name: qp.get_all(name) for name in qp}
     legacy_claim = normalize_claim(get_query_param(url_params, "claim", ""))
     legacy_credence = parse_int_param(get_query_param(url_params, "credence", 0), 0)
     survey_claim = normalize_claim(
@@ -91,9 +92,6 @@ def read_query_context():
         get_query_param(url_params, "control_flag", get_query_param(url_params, "control", "0")),
         False,
     )
-    control_claim = normalize_claim(
-        get_query_param(url_params, "control_claim", get_query_param(url_params, "control_claim_text", "")),
-    )
     discussion_claim_override = normalize_claim(
         get_query_param(url_params, "discussion_claim_seed", get_query_param(url_params, "discussion_claim", "")),
     )
@@ -107,7 +105,6 @@ def read_query_context():
         "survey_claim": survey_claim,
         "survey_claim_initial_credence": survey_claim_initial_credence,
         "control_flag": control_flag,
-        "control_claim": control_claim,
         "discussion_claim_seed": discussion_claim_seed,
         "launch_nonce": str(get_query_param(url_params, "launch_nonce", "")).strip(),
         "id": str(get_query_param(url_params, "id", "")).strip(),
@@ -129,6 +126,12 @@ def get_current_time_in_berlin():
     current_time = datetime.now(berlin_tz)
     formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S %Z%z")
     return formatted_time
+
+def utc_now():
+    return datetime.now(pytz.UTC)
+
+def iso_utc_now():
+    return utc_now().isoformat()
 
 def num_tokens_from_prompt(prompt, encoding_name="cl100k_base") -> int:
     """Returns the number of tokens in a text string."""
@@ -340,7 +343,6 @@ def build_chat_outcome(
     seeded_discussion_claim,
     survey_claim="",
     control_flag=False,
-    control_claim="",
 ):
     transcript_lines = []
     for message in messages:
@@ -472,7 +474,6 @@ def get_system_message(
     survey_claim: str | int,
     survey_claim_initial_credence: int,
     discussion_claim_seed: str | int,
-    control_claim: str | int,
     control_flag: bool,
     language: str,
 ):
@@ -493,7 +494,6 @@ def get_system_message(
                 survey_credence=survey_claim_initial_credence,
                 survey_claim_initial_credence=survey_claim_initial_credence,
                 discussion_claim=discussion_claim_seed,
-                control_claim=control_claim,
             )
         except Exception:
             return template
@@ -577,7 +577,6 @@ launch_signature = json.dumps(
         "survey_claim": query_context["survey_claim"],
         "survey_claim_initial_credence": query_context["survey_claim_initial_credence"],
         "control_flag": query_context["control_flag"],
-        "control_claim": query_context["control_claim"],
         "language": query_context["language"],
         "prolific_pid": query_context["prolific_pid"],
         "study_id": query_context["study_id"],
@@ -595,7 +594,6 @@ if st.session_state.get("launch_signature") != launch_signature:
     st.session_state["survey_claim"] = query_context["survey_claim"]
     st.session_state["survey_claim_initial_credence"] = query_context["survey_claim_initial_credence"]
     st.session_state["control_flag"] = query_context["control_flag"]
-    st.session_state["control_claim"] = query_context["control_claim"]
     st.session_state["discussion_claim_seed"] = query_context["discussion_claim_seed"]
     st.session_state["discussion_claim"] = ""
     st.session_state["discussion_claim_initial_credence"] = None
@@ -610,6 +608,9 @@ if st.session_state.get("launch_signature") != launch_signature:
     st.session_state["chat_outcome"] = {}
     st.session_state["return_payload_token"] = ""
     st.session_state["return_button_visible"] = False
+    st.session_state["chat_started_at"] = ""
+    st.session_state["chat_ended_at"] = ""
+    st.session_state["chat_duration_seconds"] = None
 
     # If no id is passed, generate random id and write to db
     if not st.session_state["id"]:
@@ -636,7 +637,6 @@ if st.session_state.get("launch_signature") != launch_signature:
                 "survey_claim": st.session_state["survey_claim"],
                 "survey_claim_initial_credence": st.session_state["survey_claim_initial_credence"],
                 "control_flag": st.session_state["control_flag"],
-                "control_claim": st.session_state["control_claim"],
                 "discussion_claim": st.session_state["discussion_claim"],
                 "discussion_claim_initial_credence": st.session_state["discussion_claim_initial_credence"],
                 "discussion_claim_final_credence": st.session_state["discussion_claim_final_credence"],
@@ -681,7 +681,6 @@ system_message = get_system_message(
     survey_claim=st.session_state["survey_claim"],
     survey_claim_initial_credence=st.session_state["survey_claim_initial_credence"],
     discussion_claim_seed=st.session_state["discussion_claim_seed"],
-    control_claim=st.session_state["control_claim"],
     control_flag=st.session_state["control_flag"],
     language=st.session_state["language"],
 )
@@ -695,7 +694,6 @@ try:
             "survey_claim": st.session_state["survey_claim"],
             "survey_claim_initial_credence": st.session_state["survey_claim_initial_credence"],
             "control_flag": st.session_state["control_flag"],
-            "control_claim": st.session_state["control_claim"],
             "discussion_claim": st.session_state.get("discussion_claim", ""),
             "discussion_claim_initial_credence": st.session_state.get("discussion_claim_initial_credence"),
             "discussion_claim_final_credence": st.session_state.get("discussion_claim_final_credence"),
@@ -728,6 +726,8 @@ if st.session_state["input_active"] == 1:
 
     if prompt:
         handoff_ready = False
+        if not st.session_state.get("chat_started_at"):
+            st.session_state["chat_started_at"] = iso_utc_now()
         previous_assistant_message = next(
             (
                 message["content"]
@@ -772,7 +772,6 @@ if st.session_state["input_active"] == 1:
                     seeded_discussion_claim=st.session_state.get("discussion_claim_seed", ""),
                     survey_claim=st.session_state.get("survey_claim", ""),
                     control_flag=st.session_state.get("control_flag", False),
-                    control_claim=st.session_state.get("control_claim", ""),
                 )
                 st.session_state["chat_outcome"] = chat_outcome
                 st.session_state["discussion_claim"] = chat_outcome.get("discussion_claim", "")
@@ -785,6 +784,18 @@ if st.session_state["input_active"] == 1:
                 st.session_state["return_payload_token"] = build_return_payload_token(chat_outcome)
                 st.session_state["input_active"] = 0
                 handoff_ready = True
+                if not st.session_state.get("chat_ended_at"):
+                    ended_at_dt = utc_now()
+                    st.session_state["chat_ended_at"] = ended_at_dt.isoformat()
+                    started_at_iso = st.session_state.get("chat_started_at", "")
+                    if started_at_iso:
+                        try:
+                            started_at_dt = datetime.fromisoformat(started_at_iso)
+                            st.session_state["chat_duration_seconds"] = int(
+                                round((ended_at_dt - started_at_dt).total_seconds())
+                            )
+                        except ValueError:
+                            st.session_state["chat_duration_seconds"] = None
 
             
             # Persist conversation to MongoDB
@@ -794,34 +805,39 @@ if st.session_state["input_active"] == 1:
                     {"role": "user", "content": prompt, "ts": get_current_time_in_berlin()},
                     {"role": "assistant", "content": full_response, "ts": get_current_time_in_berlin()},
                 ]
+                update_set = {
+                    "updated_at": get_current_time_in_berlin(),
+                    "last_model": st.session_state["last_model"],
+                    "error_messages": st.session_state["error_messages"],
+                    "prompt_tokens": st.session_state["prompt_tokens"],
+                    "completion_tokens": st.session_state["completion_tokens"],
+                    "password_used": st.session_state["password"],
+                    "survey_claim": st.session_state.get("survey_claim", ""),
+                    "survey_claim_initial_credence": st.session_state.get("survey_claim_initial_credence", 0),
+                    "control_flag": st.session_state.get("control_flag", False),
+                    "discussion_claim": st.session_state.get("discussion_claim", ""),
+                    "discussion_claim_initial_credence": st.session_state.get("discussion_claim_initial_credence"),
+                    "discussion_claim_final_credence": st.session_state.get("discussion_claim_final_credence"),
+                    "prolific_pid": st.session_state.get("prolific_pid", ""),
+                    "study_id": st.session_state.get("study_id", ""),
+                    "prolific_session_id": st.session_state.get("session_id", ""),
+                    "return_url_base": st.session_state.get("return_url_base", ""),
+                    "return_url": st.session_state.get("return_url", ""),
+                    "chat_outcome": st.session_state.get("chat_outcome", {}),
+                    "system_message": system_message,
+                }
+                if st.session_state.get("chat_started_at"):
+                    update_set["chat_started_at"] = st.session_state["chat_started_at"]
+                if st.session_state.get("chat_ended_at"):
+                    update_set["chat_ended_at"] = st.session_state["chat_ended_at"]
+                    update_set["chat_duration_seconds"] = st.session_state.get("chat_duration_seconds")
                 conversations_col.update_one(
                     {"session_id": st.session_state["id"]},
                     {
-                        "$set": {
-                            "updated_at": get_current_time_in_berlin(),
-                            "last_model": st.session_state["last_model"],
-                            "error_messages": st.session_state["error_messages"],
-                            "prompt_tokens": st.session_state["prompt_tokens"],
-                            "completion_tokens": st.session_state["completion_tokens"],
-                            "password_used": st.session_state["password"],
-                            "survey_claim": st.session_state.get("survey_claim", ""),
-                            "survey_claim_initial_credence": st.session_state.get("survey_claim_initial_credence", 0),
-                            "control_flag": st.session_state.get("control_flag", False),
-                            "control_claim": st.session_state.get("control_claim", ""),
-                            "discussion_claim": st.session_state.get("discussion_claim", ""),
-                            "discussion_claim_initial_credence": st.session_state.get("discussion_claim_initial_credence"),
-                            "discussion_claim_final_credence": st.session_state.get("discussion_claim_final_credence"),
-                            "prolific_pid": st.session_state.get("prolific_pid", ""),
-                            "study_id": st.session_state.get("study_id", ""),
-                            "prolific_session_id": st.session_state.get("session_id", ""),
-                            "return_url_base": st.session_state.get("return_url_base", ""),
-                            "return_url": st.session_state.get("return_url", ""),
-                            "chat_outcome": st.session_state.get("chat_outcome", {}),
-                            "system_message": system_message,
-                        },
-                        "$push": {"messages": {"$each": messages_to_append}}
+                        "$set": update_set,
+                        "$push": {"messages": {"$each": messages_to_append}},
                     },
-                    upsert=True
+                    upsert=True,
                 )
             except PyMongoError as e:
                 st.session_state["error_messages"] += f"Mongo persist error: {e}\n"

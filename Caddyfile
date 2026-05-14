@@ -1,8 +1,8 @@
-http://91.98.77.78 {
-	redir https://{$SITE_HOST:91-98-77-78.sslip.io}{uri} permanent
+http://{$SITE_HOST} {
+	redir https://{$SITE_HOST}{uri} permanent
 }
 
-{$SITE_HOST:91-98-77-78.sslip.io} {
+{$SITE_HOST} {
 	tls {
 		issuer acme {
 			dir https://acme-v02.api.letsencrypt.org/directory
